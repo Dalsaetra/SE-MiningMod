@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces.Terminal;
 
+using MiningMissionsV1.Session;
+
 using VRage.Game.ModAPI;
 using VRage.Utils;
 
@@ -69,6 +71,15 @@ namespace MiningMissionsV1.Support
       minerSelect.Getter = GetMinerSelection;
       minerSelect.Setter = SetMinerSelection;
       MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(minerSelect);
+
+      var startMission = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlButton, IMyConveyorSorter>("MmStartMission");
+      startMission.Title = MyStringId.GetOrCompute("Start Mining Mission");
+      startMission.Tooltip = MyStringId.GetOrCompute("Stores the grid, runs a 10s mission, then returns with ore.");
+      startMission.SupportsMultipleBlocks = false;
+      startMission.Enabled = Combine(startMission.Enabled, IsMiningMissionSorter);
+      startMission.Visible = Combine(startMission.Visible, IsMiningMissionSorter);
+      startMission.Action = block => MiningMissionSession.Instance?.TryStartMission(block);
+      MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(startMission);
 
     }
 
