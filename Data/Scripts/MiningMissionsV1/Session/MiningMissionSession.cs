@@ -21,12 +21,13 @@ namespace MiningMissionsV1.Session
   public class MiningMissionSession : MySessionComponentBase
   {
     private const string StorageFile = "MiningMissionsV1_Missions.bin";
-    private const double MissionDurationSeconds = 10.0;
+    private const double MissionDurationSeconds = 15.0;
+    private const double CountdownSeconds = 10.0;
     private const int FramesPerSecond = 60;
     private const float OreMassKg = 1000f;
     private const string OreSubtype = "Iron";
-    private const string JumpOutEffect = "JumpDriveJumpOut";
-    private const string JumpInEffect = "JumpDriveJumpIn";
+    private const string JumpOutEffect = "Warp_Prototech";
+    private const string JumpInEffect = "Warp_Prototech";
     private const string JumpOutSound = "ShipJumpDriveJumpOut";
     private const string JumpInSound = "ShipJumpDriveJumpIn";
 
@@ -65,7 +66,12 @@ namespace MiningMissionsV1.Session
 
         _active.RemoveAt(i);
         completed = true;
-        CompleteMission(entry);
+        if (entry.PendingJump)
+          BeginMission(entry);
+        else if (entry.PlayReturnEffect)
+          TriggerReturnEffect(entry);
+        else
+          CompleteMission(entry);
       }
 
       if (completed)
@@ -100,14 +106,10 @@ namespace MiningMissionsV1.Session
         return;
       }
 
-      KickPilots(grid);
-      StopGrid(grid);
       PlayJumpEffect(grid, JumpOutEffect, JumpOutSound);
 
-      var entry = CreateEntry(grid);
+      var entry = CreateEntry(grid, countdown: true);
       _active.Add(entry);
-
-      grid.Close();
       SaveToStorage();
     }
 
@@ -122,25 +124,25 @@ namespace MiningMissionsV1.Session
       return false;
     }
 
-    private MissionEntry CreateEntry(IMyCubeGrid grid)
+    private MissionEntry CreateEntry(IMyCubeGrid grid, bool countdown)
     {
-      var builder = grid.GetObjectBuilder(true) as MyObjectBuilder_CubeGrid;
-      var bytes = MyAPIGateway.Utilities.SerializeToBinary(builder);
       var matrix = grid.WorldMatrix;
       var radius = (float)grid.PositionComp.WorldAABB.HalfExtents.Length();
+      var duration = countdown ? CountdownSeconds : MissionDurationSeconds;
 
       var entry = new MissionEntry
       {
         OriginalGridId = grid.EntityId,
-        GridBytes = bytes,
         Position = matrix.Translation,
         Forward = matrix.Forward,
         Up = matrix.Up,
         Radius = radius,
-        RemainingSeconds = MissionDurationSeconds,
+        RemainingSeconds = duration,
+        PendingJump = countdown,
+        PlayReturnEffect = false,
       };
 
-      entry.EndFrame = MyAPIGateway.Session.GameplayFrameCounter + (long)(MissionDurationSeconds * FramesPerSecond);
+      entry.EndFrame = MyAPIGateway.Session.GameplayFrameCounter + (long)(duration * FramesPerSecond);
       return entry;
     }
 
@@ -168,8 +170,58 @@ namespace MiningMissionsV1.Session
       if (grid == null)
         return;
 
-      PlayJumpEffect(grid, JumpInEffect, JumpInSound);
       AddOreToGrid(grid, ComputeOreAmount(OreMassKg));
+    }
+
+    private void BeginMission(MissionEntry entry)
+    {
+      if (entry == null)
+        return;
+
+      IMyEntity entity;
+      if (!MyAPIGateway.Entities.TryGetEntityById(entry.OriginalGridId, out entity))
+        return;
+
+      var grid = entity as IMyCubeGrid;
+      if (grid == null)
+        return;
+
+      KickPilots(grid);
+      StopGrid(grid);
+
+      var builder = grid.GetObjectBuilder(true) as MyObjectBuilder_CubeGrid;
+      entry.GridBytes = MyAPIGateway.Utilities.SerializeToBinary(builder);
+      entry.PendingJump = false;
+      entry.PlayReturnEffect = true;
+      entry.RemainingSeconds = MissionDurationSeconds;
+      entry.EndFrame = MyAPIGateway.Session.GameplayFrameCounter + (long)(MissionDurationSeconds * FramesPerSecond);
+
+      _active.Add(entry);
+      grid.Close();
+    }
+
+    private void TriggerReturnEffect(MissionEntry entry)
+    {
+      if (entry == null)
+        return;
+
+      var position = entry.Position;
+      var freePos = MyAPIGateway.Entities.FindFreePlace(position, entry.Radius);
+      if (freePos.HasValue)
+        position = freePos.Value;
+
+      entry.Position = position;
+      entry.PlayReturnEffect = false;
+      entry.RemainingSeconds = CountdownSeconds;
+      entry.EndFrame = MyAPIGateway.Session.GameplayFrameCounter + (long)(CountdownSeconds * FramesPerSecond);
+
+      if (!string.IsNullOrEmpty(JumpInEffect))
+        MyVisualScriptLogicProvider.CreateParticleEffectAtPosition(JumpInEffect, position);
+
+      if (!string.IsNullOrEmpty(JumpInSound))
+        MyVisualScriptLogicProvider.PlaySingleSoundAtPosition(JumpInSound, position);
+
+      _active.Add(entry);
     }
 
     private void KickPilots(IMyCubeGrid grid)
@@ -406,6 +458,10 @@ namespace MiningMissionsV1.Session
       public double RemainingSeconds;
       [ProtoMember(8)]
       public long EndFrame;
+      [ProtoMember(9)]
+      public bool PendingJump;
+      [ProtoMember(10)]
+      public bool PlayReturnEffect;
     }
   }
 }
