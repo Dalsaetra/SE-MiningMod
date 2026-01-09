@@ -25,6 +25,7 @@ namespace MiningMissionsV1.Session
     private const string StorageFile = "MiningMissionsV1_Missions.bin";
     private const double CountdownSeconds = 10.0;
     private const int FramesPerSecond = 60;
+    private const int SaveIntervalSeconds = 20;
     private const float OreMassKg = 1000f;
     private const string DefaultOreSubtype = "Iron";
     private const string JumpOutEffect = "Warp_Prototech";
@@ -197,11 +198,17 @@ namespace MiningMissionsV1.Session
     private readonly List<IMyRadioAntenna> _antennas = new List<IMyRadioAntenna>();
     private readonly HashSet<Base6Directions.Direction> _thrustDirs = new HashSet<Base6Directions.Direction>();
     private readonly List<IMyPlayer> _players = new List<IMyPlayer>();
+    private long _lastSaveFrame;
 
     public override void LoadData()
     {
       Instance = this;
       LoadFromStorage();
+    }
+
+    public override void SaveData()
+    {
+      SaveToStorage();
     }
 
     protected override void UnloadData()
@@ -222,6 +229,7 @@ namespace MiningMissionsV1.Session
       for (int i = _active.Count - 1; i >= 0; i--)
       {
         var entry = _active[i];
+        entry.RemainingSeconds = Math.Max(0d, (entry.EndFrame - now) / (double)FramesPerSecond);
         if (now < entry.EndFrame)
           continue;
 
@@ -237,6 +245,13 @@ namespace MiningMissionsV1.Session
 
       if (completed)
         SaveToStorage();
+
+      var saveIntervalFrames = (long)SaveIntervalSeconds * FramesPerSecond;
+      if (saveIntervalFrames > 0 && now - _lastSaveFrame >= saveIntervalFrames)
+      {
+        SaveToStorage();
+        _lastSaveFrame = now;
+      }
     }
 
     public void TryStartMission(IMyTerminalBlock block)
@@ -1143,12 +1158,12 @@ namespace MiningMissionsV1.Session
         return;
 
       var data = new MissionSaveData();
-      var now = MyAPIGateway.Session.GameplayFrameCounter;
 
       for (int i = 0; i < _active.Count; i++)
       {
         var entry = _active[i];
-        entry.RemainingSeconds = Math.Max(0d, (entry.EndFrame - now) / (double)FramesPerSecond);
+        if (entry.RemainingSeconds < 0d)
+          entry.RemainingSeconds = 0d;
         data.Active.Add(entry);
       }
 
@@ -1186,6 +1201,9 @@ namespace MiningMissionsV1.Session
           for (int i = 0; i < data.Active.Count; i++)
           {
             var entry = data.Active[i];
+            if (entry.RemainingSeconds < 0d)
+              entry.RemainingSeconds = 0d;
+
             entry.EndFrame = now + (long)(entry.RemainingSeconds * FramesPerSecond);
             _active.Add(entry);
           }
@@ -1240,6 +1258,8 @@ namespace MiningMissionsV1.Session
       public long ChargeIdentityId;
       [ProtoMember(17)]
       public long FullMissionCost;
+      [ProtoMember(18)]
+      public double EndAtSeconds;
     }
   }
 }
