@@ -137,6 +137,13 @@ namespace MiningMissionsV1.GameLogic
       sb.AppendLine($"Max drills in one direction: {count}");
       var accel = _lastMaxAcceleration < 0 ? 0d : _lastMaxAcceleration;
       sb.AppendLine($"Max acceleration in one direction: {accel:0.00} m/s^2");
+
+      var pilot = MiningMissionControls.GetSelectedPilot(block);
+      if (pilot != null)
+      {
+        sb.AppendLine($"Pilot: {pilot.Name}");
+        sb.AppendLine($"Skill {pilot.Skill} | Reliability {pilot.Reliability} | Yield {pilot.Yield} | Speed {pilot.Speed}");
+      }
     }
 
     private int GetMaxDirectionalDrillCount(List<Sandbox.ModAPI.IMyShipDrill> drills)

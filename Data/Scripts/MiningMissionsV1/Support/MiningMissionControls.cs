@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces.Terminal;
@@ -17,6 +18,11 @@ namespace MiningMissionsV1.Support
     private const string SorterSubtypeSmall = "MiningMissionSorterSmall";
     private static bool _controlsCreated;
     private static readonly Dictionary<long, long> MinerSelections = new Dictionary<long, long>();
+    private static readonly List<PilotProfile> Pilots = new List<PilotProfile>
+    {
+      new PilotProfile(0, "Doug", skill: 1, reliability: 3, yield: 1, speed: 3),
+      new PilotProfile(1, "Dyllan", skill: 1, reliability: 1, yield: 2, speed: 5)
+    };
 
     internal static void EnsureControls()
     {
@@ -63,7 +69,7 @@ namespace MiningMissionsV1.Support
 
       var minerSelect = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlCombobox, IMyConveyorSorter>("MmMinerSelect");
       minerSelect.Title = MyStringId.GetOrCompute("Miner");
-      minerSelect.Tooltip = MyStringId.GetOrCompute("Select a miner profile.");
+      minerSelect.Tooltip = MyStringId.GetOrCompute(BuildPilotTooltip());
       minerSelect.SupportsMultipleBlocks = false;
       minerSelect.Enabled = Combine(minerSelect.Enabled, IsMiningMissionSorter);
       minerSelect.Visible = Combine(minerSelect.Visible, IsMiningMissionSorter);
@@ -128,8 +134,24 @@ namespace MiningMissionsV1.Support
 
     private static void MinerComboContent(List<MyTerminalControlComboBoxItem> items)
     {
-      items.Add(new MyTerminalControlComboBoxItem { Key = 0, Value = MyStringId.GetOrCompute("Miner 1") });
-      items.Add(new MyTerminalControlComboBoxItem { Key = 1, Value = MyStringId.GetOrCompute("Miner 2") });
+      for (int i = 0; i < Pilots.Count; i++)
+      {
+        var pilot = Pilots[i];
+        items.Add(new MyTerminalControlComboBoxItem { Key = pilot.Key, Value = MyStringId.GetOrCompute(pilot.Name) });
+      }
+    }
+
+    private static string BuildPilotTooltip()
+    {
+      var sb = new StringBuilder();
+      sb.AppendLine("Select a miner profile.");
+      for (int i = 0; i < Pilots.Count; i++)
+      {
+        var pilot = Pilots[i];
+        sb.AppendLine($"{pilot.Name} - Skill {pilot.Skill}, Reliability {pilot.Reliability}, Yield {pilot.Yield}, Speed {pilot.Speed}");
+      }
+
+      return sb.ToString();
     }
 
     private static long GetMinerSelection(IMyTerminalBlock block)
@@ -147,6 +169,42 @@ namespace MiningMissionsV1.Support
         return;
 
       MinerSelections[block.EntityId] = value;
+      block.RefreshCustomInfo();
+    }
+
+    public static PilotProfile GetSelectedPilot(IMyTerminalBlock block)
+    {
+      if (block == null || Pilots.Count == 0)
+        return null;
+
+      var key = GetMinerSelection(block);
+      for (int i = 0; i < Pilots.Count; i++)
+      {
+        if (Pilots[i].Key == key)
+          return Pilots[i];
+      }
+
+      return Pilots[0];
+    }
+
+    public class PilotProfile
+    {
+      public readonly long Key;
+      public readonly string Name;
+      public readonly int Skill;
+      public readonly int Reliability;
+      public readonly int Yield;
+      public readonly int Speed;
+
+      public PilotProfile(long key, string name, int skill, int reliability, int yield, int speed)
+      {
+        Key = key;
+        Name = name;
+        Skill = skill;
+        Reliability = reliability;
+        Yield = yield;
+        Speed = speed;
+      }
     }
 
   }
