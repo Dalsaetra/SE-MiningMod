@@ -87,6 +87,25 @@ namespace MiningMissionsV1.Support
       startMission.Action = block => MiningMissionSession.Instance?.TryStartMission(block);
       MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(startMission);
 
+      var applyMiner = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlButton, IMyConveyorSorter>("MmApplyMiner");
+      applyMiner.Title = MyStringId.GetOrCompute("Apply Miner");
+      applyMiner.Tooltip = MyStringId.GetOrCompute("Apply the selected miner and refresh the info panel.");
+      applyMiner.SupportsMultipleBlocks = false;
+      applyMiner.Enabled = Combine(applyMiner.Enabled, IsMiningMissionSorter);
+      applyMiner.Visible = Combine(applyMiner.Visible, IsMiningMissionSorter);
+      applyMiner.Action = block =>
+      {
+        if (block == null)
+          return;
+
+        MyAPIGateway.Utilities.InvokeOnGameThread(() =>
+        {
+          block.SetDetailedInfoDirty();
+          block.RefreshCustomInfo();
+        });
+      };
+      MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(applyMiner);
+
     }
 
     private static bool IsMiningMissionSorter(IMyTerminalBlock block)
@@ -169,7 +188,11 @@ namespace MiningMissionsV1.Support
         return;
 
       MinerSelections[block.EntityId] = value;
-      block.RefreshCustomInfo();
+      MyAPIGateway.Utilities.InvokeOnGameThread(() =>
+      {
+        block.SetDetailedInfoDirty();
+        block.RefreshCustomInfo();
+      });
     }
 
     public static PilotProfile GetSelectedPilot(IMyTerminalBlock block)
@@ -185,6 +208,14 @@ namespace MiningMissionsV1.Support
       }
 
       return Pilots[0];
+    }
+
+    public static long GetSelectedPilotKey(IMyTerminalBlock block)
+    {
+      if (block == null)
+        return 0;
+
+      return GetMinerSelection(block);
     }
 
     public class PilotProfile

@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Text;
 
 using VRage.Game.Components;
-using VRage.Game;
 using VRage.ObjectBuilders;
 using VRage.ModAPI;
 using VRageMath;
@@ -23,6 +22,7 @@ namespace MiningMissionsV1.GameLogic
     private Sandbox.ModAPI.IMyTerminalBlock _block;
     private int _lastDrillCount = -1;
     private double _lastMaxAcceleration = -1d;
+    private long _lastPilotKey = long.MinValue;
     private bool _customInfoHooked;
 
     public override void Init(MyObjectBuilder_EntityBase objectBuilder)
@@ -117,13 +117,16 @@ namespace MiningMissionsV1.GameLogic
         maxDirectionalCount = entityMaxDirectional;
 
       var maxAcceleration = GetMaxAcceleration(grid);
+      var pilotKey = MiningMissionControls.GetSelectedPilotKey(_block);
       var accelChanged = Math.Abs(maxAcceleration - _lastMaxAcceleration) > 0.01d;
       var drillChanged = maxDirectionalCount != _lastDrillCount;
-      if (!drillChanged && !accelChanged)
+      var pilotChanged = pilotKey != _lastPilotKey;
+      if (!drillChanged && !accelChanged && !pilotChanged)
         return;
 
       _lastDrillCount = maxDirectionalCount;
       _lastMaxAcceleration = maxAcceleration;
+      _lastPilotKey = pilotKey;
       _block.RefreshCustomInfo();
     }
 
