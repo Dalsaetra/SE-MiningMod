@@ -152,10 +152,15 @@ namespace MiningMissionsV1.GameLogic
       sb.AppendLine($"Max drills in one direction: {count}");
       var accel = _lastMaxAcceleration < 0 ? 0d : _lastMaxAcceleration;
       sb.AppendLine($"Max acceleration in one direction: {accel:0.00} m/s^2");
-      var expected = _lastExpectedSeconds < 0 ? 0d : _lastExpectedSeconds;
+      var pilot = MiningMissionControls.GetSelectedPilot(block);
+      var speedSkill = pilot != null ? pilot.Speed : 0;
+      var oreName = MiningMissionControls.GetSelectedOreName(block);
+      var expected = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, accel, count);
+      if (expected < 0d)
+        expected = 0d;
+      _lastExpectedSeconds = expected;
       sb.AppendLine($"Expected mission time: {FormatDuration(expected)}");
 
-      var pilot = MiningMissionControls.GetSelectedPilot(block);
       if (pilot != null)
       {
         sb.AppendLine($"Pilot: {pilot.Name}");
