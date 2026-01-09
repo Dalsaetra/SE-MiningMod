@@ -17,6 +17,7 @@ namespace MiningMissionsV1.Support
     private const string SorterSubtype = "MiningMissionSorter";
     private const string SorterSubtypeSmall = "MiningMissionSorterSmall";
     private static bool _controlsCreated;
+    private static bool _customControlHooked;
     private static readonly Dictionary<long, long> MinerSelections = new Dictionary<long, long>();
     private static readonly Dictionary<long, long> OreSelections = new Dictionary<long, long>();
     private static readonly Dictionary<long, float> MissionLengthScales = new Dictionary<long, float>();
@@ -24,7 +25,7 @@ namespace MiningMissionsV1.Support
     {
       new PilotProfile(0, "Doug",     skill: 1, reliability: 3, yield: 1, speed: 3),
       new PilotProfile(1, "Dylan",    skill: 1, reliability: 1, yield: 2, speed: 5),
-      new PilotProfile(0, "Marcus",   skill: 1, reliability: 5, yield: 3, speed: 2),
+      new PilotProfile(0, "Marcus",   skill: 1, reliability: 4, yield: 3, speed: 2),
       new PilotProfile(1, "Max",      skill: 2, reliability: 3, yield: 2, speed: 2),
       new PilotProfile(2, "Rasmus",   skill: 2, reliability: 2, yield: 3, speed: 3),
       new PilotProfile(3, "Carl",     skill: 3, reliability: 5, yield: 4, speed: 2),
@@ -136,32 +137,57 @@ namespace MiningMissionsV1.Support
 
       var startMission = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlButton, IMyConveyorSorter>("MmStartMission");
       startMission.Title = MyStringId.GetOrCompute("Start Mining Mission");
-      startMission.Tooltip = MyStringId.GetOrCompute("Stores the grid, runs a 10s mission, then returns with ore.");
+      startMission.Tooltip = MyStringId.GetOrCompute("Send the grid on a mining mission and return with the selected ore.");
       startMission.SupportsMultipleBlocks = false;
       startMission.Enabled = Combine(startMission.Enabled, IsMiningMissionSorter);
       startMission.Visible = Combine(startMission.Visible, IsMiningMissionSorter);
       startMission.Action = block => MiningMissionSession.Instance?.TryStartMission(block);
       MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(startMission);
 
-      var applyMiner = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlButton, IMyConveyorSorter>("MmApplyMiner");
-      applyMiner.Title = MyStringId.GetOrCompute("Apply Miner");
-      applyMiner.Tooltip = MyStringId.GetOrCompute("Apply the selected miner and refresh the info panel.");
-      applyMiner.SupportsMultipleBlocks = false;
-      applyMiner.Enabled = Combine(applyMiner.Enabled, IsMiningMissionSorter);
-      applyMiner.Visible = Combine(applyMiner.Visible, IsMiningMissionSorter);
-      applyMiner.Action = block =>
+      if (!_customControlHooked)
       {
-        if (block == null)
-          return;
+        _customControlHooked = true;
+        MyAPIGateway.TerminalControls.CustomControlGetter += CustomControlGetter;
+      }
 
-        MyAPIGateway.Utilities.InvokeOnGameThread(() =>
-        {
-          block.SetDetailedInfoDirty();
-          block.RefreshCustomInfo();
-        });
+    }
+
+    private static void CustomControlGetter(IMyTerminalBlock block, List<IMyTerminalControl> controls)
+    {
+      if (!IsMiningMissionSorter(block))
+        return;
+
+      var orderedIds = new[]
+      {
+        "MmOnOff",
+        "MmMinerSelect",
+        "MmOreSelect",
+        "MmMissionLength",
+        "MmStartMission"
       };
-      MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(applyMiner);
 
+      var orderedControls = new List<IMyTerminalControl>(orderedIds.Length);
+      for (int i = 0; i < orderedIds.Length; i++)
+      {
+        var id = orderedIds[i];
+        for (int j = controls.Count - 1; j >= 0; j--)
+        {
+          var ctrl = controls[j];
+          if (ctrl != null && ctrl.Id == id)
+          {
+            controls.RemoveAt(j);
+            orderedControls.Add(ctrl);
+            break;
+          }
+        }
+      }
+
+      if (orderedControls.Count == 0)
+        return;
+
+      orderedControls.Reverse();
+      for (int i = 0; i < orderedControls.Count; i++)
+        controls.Insert(0, orderedControls[i]);
     }
 
     private static bool IsMiningMissionSorter(IMyTerminalBlock block)

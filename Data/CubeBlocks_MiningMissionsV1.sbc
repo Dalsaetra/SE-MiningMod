@@ -8,7 +8,7 @@
             </Id>
             <Public>true</Public>
             <GuiVisible>true</GuiVisible>
-            <DisplayName>Mining Mission Sorter</DisplayName>
+            <DisplayName>Mining Contracting Terminal</DisplayName>
             <Description>Mining Missions test block with custom UI.</Description>
             <Icon>Textures\GUI\Icons\Cubes\ContractsBlock.dds</Icon>
             <CubeSize>Large</CubeSize>
@@ -52,7 +52,7 @@
             </Id>
             <Public>true</Public>
             <GuiVisible>true</GuiVisible>
-            <DisplayName>Mining Mission Sorter (Small)</DisplayName>
+            <DisplayName>Mining Contracting Terminal (Small)</DisplayName>
             <Description>Mining Missions test block with custom UI.</Description>
             <Icon>Textures\GUI\Icons\Cubes\ProgrammableBlockReskin.dds</Icon>
             <CubeSize>Small</CubeSize>
