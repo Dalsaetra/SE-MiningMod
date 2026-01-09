@@ -23,7 +23,6 @@ namespace MiningMissionsV1.Session
   public class MiningMissionSession : MySessionComponentBase
   {
     private const string StorageFile = "MiningMissionsV1_Missions.bin";
-    private const double MissionDurationSeconds = 15.0;
     private const double CountdownSeconds = 10.0;
     private const int FramesPerSecond = 60;
     private const float OreMassKg = 1000f;
@@ -32,6 +31,108 @@ namespace MiningMissionsV1.Session
     private const string JumpInEffect = "Warp_Prototech";
     private const string JumpOutSound = "ShipJumpDriveJumpOut";
     private const string JumpInSound = "ShipJumpDriveJumpIn";
+
+    private const double KSpeedSkill = 0.15;
+    private const double ARef = 5.0;
+    private const double AMin = 0.1;
+    private const double DrillExponentDefault = 0.75;
+    private const double RSpeedSkill = 0.08;
+    private const double MinVarianceFactor = 0.5;
+    private const double MinMissionTimeSeconds = 90.0;
+    private const double MaxMissionTimeSeconds = 5400.0;
+
+    private static readonly Random Rng = new Random();
+    private static readonly Dictionary<string, OreSpeedParams> OreParams = new Dictionary<string, OreSpeedParams>(StringComparer.OrdinalIgnoreCase)
+    {
+      ["Stone"] = new OreSpeedParams
+      {
+        BaseTravel_s = 180.0,
+        BaseMine_s = 360.0,
+        TravelDifficulty = 0.1,
+        DrillExponent = 0.85,
+        Sigma0 = 0.10
+      },
+      ["Iron"] = new OreSpeedParams
+      {
+        BaseTravel_s = 240.0,
+        BaseMine_s = 480.0,
+        TravelDifficulty = 0.2,
+        DrillExponent = 0.80,
+        Sigma0 = 0.12
+      },
+      ["Nickel"] = new OreSpeedParams
+      {
+        BaseTravel_s = 260.0,
+        BaseMine_s = 520.0,
+        TravelDifficulty = 0.25,
+        DrillExponent = 0.80,
+        Sigma0 = 0.14
+      },
+      ["Silicon"] = new OreSpeedParams
+      {
+        BaseTravel_s = 270.0,
+        BaseMine_s = 540.0,
+        TravelDifficulty = 0.3,
+        DrillExponent = 0.78,
+        Sigma0 = 0.14
+      },
+      ["Ice"] = new OreSpeedParams
+      {
+        BaseTravel_s = 220.0,
+        BaseMine_s = 420.0,
+        TravelDifficulty = 0.2,
+        DrillExponent = 0.82,
+        Sigma0 = 0.12
+      },
+      ["Cobalt"] = new OreSpeedParams
+      {
+        BaseTravel_s = 360.0,
+        BaseMine_s = 520.0,
+        TravelDifficulty = 0.4,
+        DrillExponent = 0.72,
+        Sigma0 = 0.18
+      },
+      ["Magnesium"] = new OreSpeedParams
+      {
+        BaseTravel_s = 420.0,
+        BaseMine_s = 450.0,
+        TravelDifficulty = 0.55,
+        DrillExponent = 0.70,
+        Sigma0 = 0.20
+      },
+      ["Silver"] = new OreSpeedParams
+      {
+        BaseTravel_s = 520.0,
+        BaseMine_s = 500.0,
+        TravelDifficulty = 0.7,
+        DrillExponent = 0.65,
+        Sigma0 = 0.22
+      },
+      ["Gold"] = new OreSpeedParams
+      {
+        BaseTravel_s = 560.0,
+        BaseMine_s = 520.0,
+        TravelDifficulty = 0.75,
+        DrillExponent = 0.65,
+        Sigma0 = 0.23
+      },
+      ["Platinum"] = new OreSpeedParams
+      {
+        BaseTravel_s = 680.0,
+        BaseMine_s = 420.0,
+        TravelDifficulty = 0.85,
+        DrillExponent = 0.62,
+        Sigma0 = 0.24
+      },
+      ["Uranium"] = new OreSpeedParams
+      {
+        BaseTravel_s = 720.0,
+        BaseMine_s = 300.0,
+        TravelDifficulty = 0.9,
+        DrillExponent = 0.60,
+        Sigma0 = 0.25
+      }
+    };
 
     public static MiningMissionSession Instance;
 
@@ -151,7 +252,12 @@ namespace MiningMissionsV1.Session
 
       PlayJumpEffect(grid, JumpOutEffect, JumpOutSound);
 
-      var entry = CreateEntry(grid, countdown: true, oreSubtype: oreSubtype);
+      var pilot = MiningMissionControls.GetSelectedPilot(block);
+      var speedSkill = pilot != null ? pilot.Speed : 0;
+      var drillCount = GetMaxDirectionalDrillCount(terminalSystem, grid);
+      var maxAcceleration = GetMaxAcceleration(grid);
+      var missionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount);
+      var entry = CreateEntry(grid, countdown: true, oreSubtype: oreSubtype, missionDurationSeconds: missionDuration);
       _active.Add(entry);
       SaveToStorage();
     }
@@ -233,11 +339,184 @@ namespace MiningMissionsV1.Session
       return false;
     }
 
-    private MissionEntry CreateEntry(IMyCubeGrid grid, bool countdown, string oreSubtype)
+    private int GetMaxDirectionalDrillCount(IMyGridTerminalSystem terminalSystem, IMyCubeGrid grid)
+    {
+      _drills.Clear();
+      terminalSystem.GetBlocksOfType(_drills, d => d.CubeGrid == grid);
+      if (_drills.Count == 0)
+        return 0;
+
+      var counts = new int[6];
+      for (int i = 0; i < _drills.Count; i++)
+        AddDirectionalCount(counts, _drills[i].Orientation.Forward);
+
+      return GetMaxDirectionalCount(counts);
+    }
+
+    private void AddDirectionalCount(int[] counts, Base6Directions.Direction direction)
+    {
+      switch (direction)
+      {
+        case Base6Directions.Direction.Forward:
+          counts[0]++;
+          break;
+        case Base6Directions.Direction.Backward:
+          counts[1]++;
+          break;
+        case Base6Directions.Direction.Left:
+          counts[2]++;
+          break;
+        case Base6Directions.Direction.Right:
+          counts[3]++;
+          break;
+        case Base6Directions.Direction.Up:
+          counts[4]++;
+          break;
+        case Base6Directions.Direction.Down:
+          counts[5]++;
+          break;
+      }
+    }
+
+    private int GetMaxDirectionalCount(int[] counts)
+    {
+      var max = 0;
+      for (int i = 0; i < counts.Length; i++)
+      {
+        if (counts[i] > max)
+          max = counts[i];
+      }
+
+      return max;
+    }
+
+    private double GetMaxAcceleration(IMyCubeGrid grid)
+    {
+      if (grid?.Physics == null)
+        return 0d;
+
+      var mass = (double)grid.Physics.Mass;
+      if (mass <= 0d)
+        return 0d;
+
+      var maxThrust = 0d;
+      maxThrust = Math.Max(maxThrust, grid.GetMaxThrustInDirection(Base6Directions.Direction.Forward));
+      maxThrust = Math.Max(maxThrust, grid.GetMaxThrustInDirection(Base6Directions.Direction.Backward));
+      maxThrust = Math.Max(maxThrust, grid.GetMaxThrustInDirection(Base6Directions.Direction.Left));
+      maxThrust = Math.Max(maxThrust, grid.GetMaxThrustInDirection(Base6Directions.Direction.Right));
+      maxThrust = Math.Max(maxThrust, grid.GetMaxThrustInDirection(Base6Directions.Direction.Up));
+      maxThrust = Math.Max(maxThrust, grid.GetMaxThrustInDirection(Base6Directions.Direction.Down));
+
+      return maxThrust / mass;
+    }
+
+    private double ComputeMissionDurationSeconds(int speedSkill0to5, string oreSubtype, double aMax, int drillCount)
+    {
+      var p = GetOreSpeedParams(oreSubtype);
+      var mean = MissionTimeMean(speedSkill0to5, aMax, drillCount, p);
+      var std = MissionTimeStd(mean, speedSkill0to5, p);
+      var value = mean;
+
+      if (std > 0d)
+        value = mean + (NextGaussian() * std);
+
+      if (double.IsNaN(value) || double.IsInfinity(value))
+        value = mean;
+
+      if (value < MinMissionTimeSeconds)
+        value = MinMissionTimeSeconds;
+      else if (value > MaxMissionTimeSeconds)
+        value = MaxMissionTimeSeconds;
+
+      return value;
+    }
+
+    public static double EstimateMissionTimeMeanSeconds(int speedSkill0to5, string oreSubtype, double aMax, int drillCount)
+    {
+      var p = GetOreSpeedParams(oreSubtype);
+      return MissionTimeMean(speedSkill0to5, aMax, drillCount, p);
+    }
+
+    private static OreSpeedParams GetOreSpeedParams(string oreSubtype)
+    {
+      OreSpeedParams p;
+      if (string.IsNullOrEmpty(oreSubtype) || !OreParams.TryGetValue(oreSubtype, out p))
+      {
+        if (!OreParams.TryGetValue(DefaultOreSubtype, out p))
+        {
+          p = new OreSpeedParams
+          {
+            BaseTravel_s = 300.0,
+            BaseMine_s = 600.0,
+            TravelDifficulty = 0.3,
+            DrillExponent = DrillExponentDefault,
+            Sigma0 = 0.15
+          };
+        }
+      }
+
+      if (p.DrillExponent <= 0d)
+        p.DrillExponent = DrillExponentDefault;
+
+      if (p.Sigma0 <= 0d)
+        p.Sigma0 = 0.15;
+
+      return p;
+    }
+
+    private static double MissionTimeMean(int speedSkill0to5, double aMax, int drillCount, OreSpeedParams p)
+    {
+      var s = ClampInt(speedSkill0to5, 0, 5);
+      var d = Math.Max(1, drillCount);
+      var accel = Math.Max(AMin, aMax);
+
+      var fSkill = 1.0 / (1.0 + KSpeedSkill * s);
+      var fAccel = 1.0 / Math.Sqrt(accel / ARef);
+      var fDrills = 1.0 / Math.Pow(d, p.DrillExponent);
+
+      var travel = p.BaseTravel_s * (1.0 + p.TravelDifficulty) * fSkill * fAccel;
+      var mine = p.BaseMine_s * fSkill * fDrills;
+
+      return travel + mine;
+    }
+
+    private static double MissionTimeStd(double meanTime, int speedSkill0to5, OreSpeedParams p)
+    {
+      var s = ClampInt(speedSkill0to5, 0, 5);
+      var consistency = Clamp(1.0 - RSpeedSkill * s, MinVarianceFactor, 1.0);
+      return meanTime * p.Sigma0 * consistency;
+    }
+
+    private static double NextGaussian()
+    {
+      var u1 = 1.0 - Rng.NextDouble();
+      var u2 = 1.0 - Rng.NextDouble();
+      return Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
+    }
+
+    private static int ClampInt(int value, int min, int max)
+    {
+      if (value < min)
+        return min;
+      if (value > max)
+        return max;
+      return value;
+    }
+
+    private static double Clamp(double value, double min, double max)
+    {
+      if (value < min)
+        return min;
+      if (value > max)
+        return max;
+      return value;
+    }
+
+    private MissionEntry CreateEntry(IMyCubeGrid grid, bool countdown, string oreSubtype, double missionDurationSeconds)
     {
       var matrix = grid.WorldMatrix;
       var radius = (float)grid.PositionComp.WorldAABB.HalfExtents.Length();
-      var duration = countdown ? CountdownSeconds : MissionDurationSeconds;
+      var duration = countdown ? CountdownSeconds : missionDurationSeconds;
 
       var entry = new MissionEntry
       {
@@ -250,6 +529,7 @@ namespace MiningMissionsV1.Session
         PendingJump = countdown,
         PlayReturnEffect = false,
         OreSubtype = string.IsNullOrEmpty(oreSubtype) ? DefaultOreSubtype : oreSubtype,
+        MissionDurationSeconds = missionDurationSeconds > 0d ? missionDurationSeconds : MinMissionTimeSeconds,
       };
 
       entry.EndFrame = MyAPIGateway.Session.GameplayFrameCounter + (long)(duration * FramesPerSecond);
@@ -304,8 +584,9 @@ namespace MiningMissionsV1.Session
       entry.GridBytes = MyAPIGateway.Utilities.SerializeToBinary(builder);
       entry.PendingJump = false;
       entry.PlayReturnEffect = true;
-      entry.RemainingSeconds = MissionDurationSeconds;
-      entry.EndFrame = MyAPIGateway.Session.GameplayFrameCounter + (long)(MissionDurationSeconds * FramesPerSecond);
+      var missionDuration = entry.MissionDurationSeconds > 0d ? entry.MissionDurationSeconds : MinMissionTimeSeconds;
+      entry.RemainingSeconds = missionDuration;
+      entry.EndFrame = MyAPIGateway.Session.GameplayFrameCounter + (long)(missionDuration * FramesPerSecond);
 
       _active.Add(entry);
       grid.Close();
@@ -486,6 +767,15 @@ namespace MiningMissionsV1.Session
       return MyDefinitionManager.Static.GetPhysicalItemDefinition(oreId);
     }
 
+    private struct OreSpeedParams
+    {
+      public double BaseTravel_s;
+      public double BaseMine_s;
+      public double TravelDifficulty;
+      public double DrillExponent;
+      public double Sigma0;
+    }
+
     private void SaveToStorage()
     {
       if (!MyAPIGateway.Multiplayer.IsServer)
@@ -577,6 +867,8 @@ namespace MiningMissionsV1.Session
       public bool PlayReturnEffect;
       [ProtoMember(11)]
       public string OreSubtype;
+      [ProtoMember(12)]
+      public double MissionDurationSeconds;
     }
   }
 }

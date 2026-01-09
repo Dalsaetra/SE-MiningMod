@@ -1,4 +1,5 @@
 using MiningMissionsV1.Support;
+using MiningMissionsV1.Session;
 
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.ModAPI;
@@ -23,6 +24,8 @@ namespace MiningMissionsV1.GameLogic
     private int _lastDrillCount = -1;
     private double _lastMaxAcceleration = -1d;
     private long _lastPilotKey = long.MinValue;
+    private long _lastOreKey = long.MinValue;
+    private double _lastExpectedSeconds = -1d;
     private bool _customInfoHooked;
 
     public override void Init(MyObjectBuilder_EntityBase objectBuilder)
@@ -118,15 +121,24 @@ namespace MiningMissionsV1.GameLogic
 
       var maxAcceleration = GetMaxAcceleration(grid);
       var pilotKey = MiningMissionControls.GetSelectedPilotKey(_block);
+      var oreKey = MiningMissionControls.GetSelectedOreKey(_block);
+      var pilot = MiningMissionControls.GetSelectedPilot(_block);
+      var speedSkill = pilot != null ? pilot.Speed : 0;
+      var oreName = MiningMissionControls.GetSelectedOreName(_block);
+      var expectedSeconds = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, maxAcceleration, maxDirectionalCount);
       var accelChanged = Math.Abs(maxAcceleration - _lastMaxAcceleration) > 0.01d;
       var drillChanged = maxDirectionalCount != _lastDrillCount;
       var pilotChanged = pilotKey != _lastPilotKey;
-      if (!drillChanged && !accelChanged && !pilotChanged)
+      var oreChanged = oreKey != _lastOreKey;
+      var expectedChanged = Math.Abs(expectedSeconds - _lastExpectedSeconds) > 1.0d;
+      if (!drillChanged && !accelChanged && !pilotChanged && !oreChanged && !expectedChanged)
         return;
 
       _lastDrillCount = maxDirectionalCount;
       _lastMaxAcceleration = maxAcceleration;
       _lastPilotKey = pilotKey;
+      _lastOreKey = oreKey;
+      _lastExpectedSeconds = expectedSeconds;
       _block.RefreshCustomInfo();
     }
 
@@ -140,6 +152,8 @@ namespace MiningMissionsV1.GameLogic
       sb.AppendLine($"Max drills in one direction: {count}");
       var accel = _lastMaxAcceleration < 0 ? 0d : _lastMaxAcceleration;
       sb.AppendLine($"Max acceleration in one direction: {accel:0.00} m/s^2");
+      var expected = _lastExpectedSeconds < 0 ? 0d : _lastExpectedSeconds;
+      sb.AppendLine($"Expected mission time: {FormatDuration(expected)}");
 
       var pilot = MiningMissionControls.GetSelectedPilot(block);
       if (pilot != null)
@@ -147,6 +161,18 @@ namespace MiningMissionsV1.GameLogic
         sb.AppendLine($"Pilot: {pilot.Name}");
         sb.AppendLine($"Skill {pilot.Skill} | Reliability {pilot.Reliability} | Yield {pilot.Yield} | Speed {pilot.Speed}");
       }
+    }
+
+    private string FormatDuration(double seconds)
+    {
+      if (seconds < 0d)
+        seconds = 0d;
+
+      var time = TimeSpan.FromSeconds(seconds);
+      if (time.TotalHours >= 1d)
+        return $"{(int)time.TotalHours}h {time.Minutes}m {time.Seconds}s";
+
+      return $"{time.Minutes}m {time.Seconds}s";
     }
 
     private int GetMaxDirectionalDrillCount(List<Sandbox.ModAPI.IMyShipDrill> drills)

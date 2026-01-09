@@ -358,6 +358,14 @@ namespace MiningMissionsV1.Support
       return GetMinerSelection(block);
     }
 
+    public static long GetSelectedOreKey(IMyTerminalBlock block)
+    {
+      if (block == null)
+        return 0;
+
+      return GetOreSelection(block);
+    }
+
     public static string GetSelectedOreName(IMyTerminalBlock block)
     {
       var key = GetOreSelection(block);
