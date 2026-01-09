@@ -10,6 +10,7 @@ using VRage.Game.Components;
 using VRage.Game;
 using VRage.ObjectBuilders;
 using VRage.ModAPI;
+using VRageMath;
 
 namespace MiningMissionsV1.GameLogic
 {
@@ -61,10 +62,15 @@ namespace MiningMissionsV1.GameLogic
       if (grid == null)
         return;
 
-      var count = 0;
+      var maxDirectionalCount = 0;
       var terminalDrillCount = 0;
       var slimDrillCount = 0;
       var entityDrillCount = 0;
+      var terminalMaxDirectional = 0;
+      var slimMaxDirectional = 0;
+      var entityMaxDirectional = 0;
+      var slimDirCounts = new int[6];
+      var entityDirCounts = new int[6];
 
       var terminalSystem = MyAPIGateway.TerminalActionsHelper.GetTerminalSystemForGrid(grid);
       if (terminalSystem != null)
@@ -72,15 +78,21 @@ namespace MiningMissionsV1.GameLogic
         _terminalDrills.Clear();
         terminalSystem.GetBlocksOfType(_terminalDrills, b => b.CubeGrid == grid);
         terminalDrillCount = _terminalDrills.Count;
+        terminalMaxDirectional = GetMaxDirectionalDrillCount(_terminalDrills);
       }
       _slimBlocks.Clear();
       grid.GetBlocks(_slimBlocks, b => b != null);
       for (int i = 0; i < _slimBlocks.Count; i++)
       {
         var fat = _slimBlocks[i].FatBlock;
-        if (fat is Sandbox.ModAPI.IMyShipDrill)
+        var drill = fat as Sandbox.ModAPI.IMyShipDrill;
+        if (drill != null)
+        {
           slimDrillCount++;
+          AddDirectionalCount(slimDirCounts, drill.Orientation.Forward);
+        }
       }
+      slimMaxDirectional = GetMaxDirectionalCount(slimDirCounts);
 
       _entities.Clear();
       MyAPIGateway.Entities.GetEntities(_entities, e => e is Sandbox.ModAPI.IMyShipDrill);
@@ -88,21 +100,27 @@ namespace MiningMissionsV1.GameLogic
       {
         var drill = entity as Sandbox.ModAPI.IMyShipDrill;
         if (drill != null && drill.CubeGrid == grid)
+        {
           entityDrillCount++;
+          AddDirectionalCount(entityDirCounts, drill.Orientation.Forward);
+        }
       }
+      entityMaxDirectional = GetMaxDirectionalCount(entityDirCounts);
 
-      count = terminalDrillCount;
-      if (slimDrillCount > count)
-        count = slimDrillCount;
-      if (entityDrillCount > count)
-        count = entityDrillCount;
-      var drillChanged = count != _lastDrillCount;
+      if (terminalDrillCount >= slimDrillCount && terminalDrillCount >= entityDrillCount)
+        maxDirectionalCount = terminalMaxDirectional;
+      else if (slimDrillCount >= entityDrillCount)
+        maxDirectionalCount = slimMaxDirectional;
+      else
+        maxDirectionalCount = entityMaxDirectional;
+
+      var drillChanged = maxDirectionalCount != _lastDrillCount;
       if (!drillChanged)
         return;
 
       if (drillChanged)
       {
-        _lastDrillCount = count;
+        _lastDrillCount = maxDirectionalCount;
         _block.RefreshCustomInfo();
       }
     }
@@ -114,7 +132,60 @@ namespace MiningMissionsV1.GameLogic
 
       var count = _lastDrillCount < 0 ? 0 : _lastDrillCount;
       sb.AppendLine("Mining Missions");
-      sb.AppendLine($"Drills detected: {count}");
+      sb.AppendLine($"Max drills in one direction: {count}");
+    }
+
+    private int GetMaxDirectionalDrillCount(List<Sandbox.ModAPI.IMyShipDrill> drills)
+    {
+      var counts = new int[6];
+      for (int i = 0; i < drills.Count; i++)
+        AddDirectionalCount(counts, drills[i].Orientation.Forward);
+
+      var max = 0;
+      for (int i = 0; i < counts.Length; i++)
+      {
+        if (counts[i] > max)
+          max = counts[i];
+      }
+
+      return max;
+    }
+
+    private void AddDirectionalCount(int[] counts, Base6Directions.Direction direction)
+    {
+      switch (direction)
+      {
+        case Base6Directions.Direction.Forward:
+          counts[0]++;
+          break;
+        case Base6Directions.Direction.Backward:
+          counts[1]++;
+          break;
+        case Base6Directions.Direction.Left:
+          counts[2]++;
+          break;
+        case Base6Directions.Direction.Right:
+          counts[3]++;
+          break;
+        case Base6Directions.Direction.Up:
+          counts[4]++;
+          break;
+        case Base6Directions.Direction.Down:
+          counts[5]++;
+          break;
+      }
+    }
+
+    private int GetMaxDirectionalCount(int[] counts)
+    {
+      var max = 0;
+      for (int i = 0; i < counts.Length; i++)
+      {
+        if (counts[i] > max)
+          max = counts[i];
+      }
+
+      return max;
     }
 
     private void OnClose(IMyEntity entity)
