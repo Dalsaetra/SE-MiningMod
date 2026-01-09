@@ -10,12 +10,12 @@
             <GuiVisible>true</GuiVisible>
             <DisplayName>Mining Contracting Terminal</DisplayName>
             <Description>Mining Missions test block with custom UI.</Description>
-            <Icon>Textures\GUI\Icons\Cubes\ContractsBlock.dds</Icon>
+            <Icon>Textures\GUI\Icons\Cubes\ProgrammingBlock.dds</Icon>
             <CubeSize>Large</CubeSize>
             <BlockTopology>TriangleMesh</BlockTopology>
             <Size x="1" y="1" z="1" />
             <ModelOffset x="0" y="0" z="0" />
-            <Model>Models\Cubes\Large\ConveyorSorter.mwm</Model>
+            <Model>Models\Cubes\Large\ProgrammingBlock.mwm</Model>
             <Components>
                 <Component Subtype="SteelPlate" Count="10" />
                 <Component Subtype="Construction" Count="8" />
@@ -25,9 +25,9 @@
             </Components>
             <CriticalComponent Subtype="Computer" Index="0" />
             <BuildProgressModels>
-                <Model BuildPercentUpperBound="0.33" File="Models\Cubes\Large\ConveyorSorterConstruction_1.mwm" />
-                <Model BuildPercentUpperBound="0.66" File="Models\Cubes\Large\ConveyorSorterConstruction_2.mwm" />
-                <Model BuildPercentUpperBound="1.00" File="Models\Cubes\Large\ConveyorSorterConstruction_3.mwm" />
+                <Model BuildPercentUpperBound="0.33" File="Models\Cubes\Large\ProgrammingBlockConstruction_1.mwm" />
+                <Model BuildPercentUpperBound="0.66" File="Models\Cubes\Large\ProgrammingBlockConstruction_2.mwm" />
+                <Model BuildPercentUpperBound="1.00" File="Models\Cubes\Large\ProgrammingBlockConstruction_3.mwm" />
             </BuildProgressModels>
             <BlockPairName>MiningMissionSorter</BlockPairName>
             <BuildTimeSeconds>10</BuildTimeSeconds>
@@ -39,6 +39,10 @@
                 <MountPoint Side="Left" StartX="0" StartY="0" EndX="1" EndY="1" />
                 <MountPoint Side="Right" StartX="0" StartY="0" EndX="1" EndY="1" />
             </MountPoints>
+            <ScreenAreas>
+                <ScreenArea Name="CockpitScreen_02" DisplayName="DisplayName_Screen_Large" TextureResolution="512" ScreenWidth="16" ScreenHeight="10" />
+                <ScreenArea Name="CockpitScreen_01" DisplayName="DisplayName_Screen_Keyboard" TextureResolution="256" ScreenWidth="5" ScreenHeight="2" />
+            </ScreenAreas>
             <ResourceSinkGroup>Conveyors</ResourceSinkGroup>
             <RequiredPowerInput>0.001</RequiredPowerInput>
             <PCU>10</PCU>
