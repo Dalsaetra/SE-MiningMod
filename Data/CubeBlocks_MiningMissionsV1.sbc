@@ -54,7 +54,7 @@
             <GuiVisible>true</GuiVisible>
             <DisplayName>Mining Mission Sorter (Small)</DisplayName>
             <Description>Mining Missions test block with custom UI.</Description>
-            <Icon>Textures\GUI\Icons\Cubes\ConveyorSorter.dds</Icon>
+            <Icon>Textures\GUI\Icons\Cubes\ProgrammableBlockReskin.dds</Icon>
             <CubeSize>Small</CubeSize>
             <BlockTopology>TriangleMesh</BlockTopology>
             <Size x="1" y="1" z="1" />
@@ -69,9 +69,8 @@
             </Components>
             <CriticalComponent Subtype="Computer" Index="0" />
             <BuildProgressModels>
-                <Model BuildPercentUpperBound="0.33" File="Models\Cubes\Small\ProgrammableBlockReskinConstruction_1.mwm" />
-                <Model BuildPercentUpperBound="0.66" File="Models\Cubes\Small\ProgrammableBlockReskinConstruction_2.mwm" />
-                <Model BuildPercentUpperBound="1.00" File="Models\Cubes\Small\ProgrammableBlockReskinConstruction_3.mwm" />
+                <Model BuildPercentUpperBound="0.5" File="Models\Cubes\Small\ProgrammableBlockReskinConstruction_1.mwm" />
+                <Model BuildPercentUpperBound="1.0" File="Models\Cubes\Small\ProgrammableBlockReskinConstruction_2.mwm" />
             </BuildProgressModels>
             <BlockPairName>MiningMissionSorter</BlockPairName>
             <BuildTimeSeconds>6</BuildTimeSeconds>

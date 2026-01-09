@@ -3,7 +3,7 @@
   <BlockVariantGroups>
     <BlockVariantGroup>
       <Id Type="MyObjectBuilder_BlockVariantGroup" Subtype="MiningMissions" />
-      <Icon>Textures\GUI\Icons\Cubes\ConveyorSorter.dds</Icon>
+      <Icon>Textures\GUI\Icons\Cubes\ContractsBlock.dds</Icon>
       <DisplayName>Mining Missions</DisplayName>
       <Description>Mining Missions</Description>
       <Blocks>
