@@ -41,6 +41,11 @@ namespace MiningMissionsV1.Session
     private const double MinMissionTimeSeconds = 90.0;
     private const double MaxMissionTimeSeconds = 5400.0;
 
+    private const double KYieldSkill = 0.18;
+    private const double DrillBeta = 0.45;
+    private const double RYieldSkill = 0.10;
+    private const double MinYieldVarianceFactor = 0.5;
+
     private static readonly Random Rng = new Random();
     private static readonly Dictionary<string, OreSpeedParams> OreParams = new Dictionary<string, OreSpeedParams>(StringComparer.OrdinalIgnoreCase)
     {
@@ -132,6 +137,34 @@ namespace MiningMissionsV1.Session
         DrillExponent = 0.60,
         Sigma0 = 0.25
       }
+    };
+    private static readonly Dictionary<string, OreYieldParams> OreYield = new Dictionary<string, OreYieldParams>(StringComparer.OrdinalIgnoreCase)
+    {
+      ["Stone"] = new OreYieldParams { BaseYield = 1200.0, CV0 = 0.20 },
+      ["Iron"] = new OreYieldParams { BaseYield = 1000.0, CV0 = 0.20 },
+      ["Nickel"] = new OreYieldParams { BaseYield = 900.0, CV0 = 0.20 },
+      ["Silicon"] = new OreYieldParams { BaseYield = 850.0, CV0 = 0.20 },
+      ["Ice"] = new OreYieldParams { BaseYield = 1100.0, CV0 = 0.20 },
+      ["Cobalt"] = new OreYieldParams { BaseYield = 700.0, CV0 = 0.25 },
+      ["Magnesium"] = new OreYieldParams { BaseYield = 650.0, CV0 = 0.25 },
+      ["Silver"] = new OreYieldParams { BaseYield = 550.0, CV0 = 0.30 },
+      ["Gold"] = new OreYieldParams { BaseYield = 500.0, CV0 = 0.30 },
+      ["Platinum"] = new OreYieldParams { BaseYield = 420.0, CV0 = 0.30 },
+      ["Uranium"] = new OreYieldParams { BaseYield = 380.0, CV0 = 0.30 }
+    };
+    private static readonly Dictionary<string, double> OreMinedRatios = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+    {
+      ["Stone"] = 5.0,
+      ["Iron"] = 5.0,
+      ["Nickel"] = 3.0,
+      ["Silicon"] = 3.0,
+      ["Cobalt"] = 3.0,
+      ["Magnesium"] = 3.0,
+      ["Silver"] = 1.0,
+      ["Gold"] = 1.0,
+      ["Platinum"] = 1.0,
+      ["Uranium"] = 0.3,
+      ["Ice"] = 5.0
     };
 
     public static MiningMissionSession Instance;
@@ -242,22 +275,31 @@ namespace MiningMissionsV1.Session
         return;
       }
 
+      var pilot = MiningMissionControls.GetSelectedPilot(block);
+      var speedSkill = pilot != null ? pilot.Speed : 0;
+      var yieldSkill = pilot != null ? pilot.Yield : 0;
+      var miningSkill = pilot != null ? pilot.Skill : 0;
+      var drillCount = GetMaxDirectionalDrillCount(terminalSystem, grid);
+      var maxAcceleration = GetMaxAcceleration(grid);
       var oreSubtype = MiningMissionControls.GetSelectedOreName(block);
-      var oreAmount = ComputeOreAmount(OreMassKg, oreSubtype);
+      var missionScale = MiningMissionControls.GetMissionLengthScale(block);
+      var yieldMean = EstimateYieldMeanUnits(yieldSkill, miningSkill, drillCount, oreSubtype) * missionScale;
+      var oreAmount = (MyFixedPoint)Math.Max(1d, yieldMean);
       if (!HasCargoCapacity(grid, oreAmount, oreSubtype))
       {
-        MyAPIGateway.Utilities.ShowMessage("MiningMissions", $"Not enough cargo space for 1000 kg of {oreSubtype} ore.");
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", $"Not enough cargo space for the expected {oreSubtype} ore yield.");
         return;
       }
 
+      var yieldUnits = ComputeYieldUnits(yieldMean, yieldSkill, oreSubtype);
+      if (yieldUnits < 1d)
+        yieldUnits = 1d;
+
       PlayJumpEffect(grid, JumpOutEffect, JumpOutSound);
 
-      var pilot = MiningMissionControls.GetSelectedPilot(block);
-      var speedSkill = pilot != null ? pilot.Speed : 0;
-      var drillCount = GetMaxDirectionalDrillCount(terminalSystem, grid);
-      var maxAcceleration = GetMaxAcceleration(grid);
-      var missionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount);
+      var missionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount) * missionScale;
       var entry = CreateEntry(grid, countdown: true, oreSubtype: oreSubtype, missionDurationSeconds: missionDuration);
+      entry.OreUnits = yieldUnits;
       _active.Add(entry);
       SaveToStorage();
     }
@@ -437,6 +479,13 @@ namespace MiningMissionsV1.Session
       return MissionTimeMean(speedSkill0to5, aMax, drillCount, p);
     }
 
+    public static double EstimateYieldMeanUnits(int yieldSkill0to5, int overallMiningSkill0to5, int drillCount, string oreSubtype)
+    {
+      var p = GetOreYieldParams(oreSubtype);
+      var ratio = GetMinedOreRatio(oreSubtype);
+      return ComputeYieldMean(yieldSkill0to5, overallMiningSkill0to5, drillCount, ratio, p);
+    }
+
     private static OreSpeedParams GetOreSpeedParams(string oreSubtype)
     {
       OreSpeedParams p;
@@ -512,6 +561,77 @@ namespace MiningMissionsV1.Session
       return value;
     }
 
+    private double ComputeYieldUnits(double meanUnits, int yieldSkill0to5, string oreSubtype)
+    {
+      var p = GetOreYieldParams(oreSubtype);
+      var std = ComputeYieldStd(meanUnits, yieldSkill0to5, p);
+      var value = meanUnits;
+      if (std > 0d)
+        value = meanUnits + (NextGaussian() * std);
+
+      if (double.IsNaN(value) || double.IsInfinity(value))
+        value = meanUnits;
+
+      if (value < 1d)
+        value = 1d;
+
+      return value;
+    }
+
+    private static OreYieldParams GetOreYieldParams(string oreSubtype)
+    {
+      OreYieldParams p;
+      if (string.IsNullOrEmpty(oreSubtype) || !OreYield.TryGetValue(oreSubtype, out p))
+      {
+        if (!OreYield.TryGetValue(DefaultOreSubtype, out p))
+          p = new OreYieldParams { BaseYield = 1000.0, CV0 = 0.20 };
+      }
+
+      if (p.BaseYield <= 0d)
+        p.BaseYield = 1000.0;
+      if (p.CV0 <= 0d)
+        p.CV0 = 0.20;
+
+      return p;
+    }
+
+    private static double GetMinedOreRatio(string oreSubtype)
+    {
+      double ratio;
+      if (string.IsNullOrEmpty(oreSubtype) || !OreMinedRatios.TryGetValue(oreSubtype, out ratio))
+        return 1.0;
+
+      return ratio;
+    }
+
+    private static int DrillCapFromMiningSkill(int overallMiningSkill0to5)
+    {
+      var m = ClampInt(overallMiningSkill0to5, 0, 5);
+      return 1 + (int)Math.Floor(m * 7.0 / 5.0);
+    }
+
+    private static double ComputeYieldMean(int yieldSkill0to5, int overallMiningSkill0to5, int drillCount, double minedOreRatio, OreYieldParams p)
+    {
+      var y = ClampInt(yieldSkill0to5, 0, 5);
+      var m = ClampInt(overallMiningSkill0to5, 0, 5);
+      var d = Math.Max(1, drillCount);
+
+      var dCap = DrillCapFromMiningSkill(m);
+      var dEff = Math.Min(Math.Max(1, d), dCap);
+
+      var fSkill = 1.0 + KYieldSkill * y;
+      var fDrill = Math.Pow(dEff, DrillBeta);
+
+      return p.BaseYield * minedOreRatio * fSkill * fDrill;
+    }
+
+    private static double ComputeYieldStd(double mean, int yieldSkill0to5, OreYieldParams p)
+    {
+      var y = ClampInt(yieldSkill0to5, 0, 5);
+      var consistency = Math.Max(MinYieldVarianceFactor, 1.0 - RYieldSkill * y);
+      return mean * p.CV0 * consistency;
+    }
+
     private MissionEntry CreateEntry(IMyCubeGrid grid, bool countdown, string oreSubtype, double missionDurationSeconds)
     {
       var matrix = grid.WorldMatrix;
@@ -561,7 +681,8 @@ namespace MiningMissionsV1.Session
         return;
 
       var oreSubtype = string.IsNullOrEmpty(entry.OreSubtype) ? DefaultOreSubtype : entry.OreSubtype;
-      AddOreToGrid(grid, ComputeOreAmount(OreMassKg, oreSubtype), oreSubtype);
+      var oreUnits = entry.OreUnits > 0d ? entry.OreUnits : EstimateYieldMeanUnits(0, 0, 1, oreSubtype);
+      AddOreToGrid(grid, (MyFixedPoint)oreUnits, oreSubtype);
     }
 
     private void BeginMission(MissionEntry entry)
@@ -767,6 +888,12 @@ namespace MiningMissionsV1.Session
       return MyDefinitionManager.Static.GetPhysicalItemDefinition(oreId);
     }
 
+    private struct OreYieldParams
+    {
+      public double BaseYield;
+      public double CV0;
+    }
+
     private struct OreSpeedParams
     {
       public double BaseTravel_s;
@@ -869,6 +996,8 @@ namespace MiningMissionsV1.Session
       public string OreSubtype;
       [ProtoMember(12)]
       public double MissionDurationSeconds;
+      [ProtoMember(13)]
+      public double OreUnits;
     }
   }
 }

@@ -19,6 +19,7 @@ namespace MiningMissionsV1.Support
     private static bool _controlsCreated;
     private static readonly Dictionary<long, long> MinerSelections = new Dictionary<long, long>();
     private static readonly Dictionary<long, long> OreSelections = new Dictionary<long, long>();
+    private static readonly Dictionary<long, float> MissionLengthScales = new Dictionary<long, float>();
     private static readonly List<PilotProfile> Pilots = new List<PilotProfile>
     {
       new PilotProfile(0, "Doug",     skill: 1, reliability: 3, yield: 1, speed: 3),
@@ -50,6 +51,7 @@ namespace MiningMissionsV1.Support
     };
     private static int _lastUiPilotSkill = 1;
     private static IMyTerminalControlCombobox _oreSelectControl;
+    private static IMyTerminalControlSlider _missionLengthControl;
 
     internal static void EnsureControls()
     {
@@ -115,6 +117,22 @@ namespace MiningMissionsV1.Support
       _oreSelectControl.Getter = GetOreSelection;
       _oreSelectControl.Setter = SetOreSelection;
       MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(_oreSelectControl);
+
+      _missionLengthControl = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlSlider, IMyConveyorSorter>("MmMissionLength");
+      _missionLengthControl.Title = MyStringId.GetOrCompute("Mission Length");
+      _missionLengthControl.Tooltip = MyStringId.GetOrCompute("Scales mission time and yield.");
+      _missionLengthControl.SupportsMultipleBlocks = false;
+      _missionLengthControl.Enabled = Combine(_missionLengthControl.Enabled, IsMiningMissionSorter);
+      _missionLengthControl.Visible = Combine(_missionLengthControl.Visible, IsMiningMissionSorter);
+      _missionLengthControl.SetLimits(0.5f, 2.0f);
+      _missionLengthControl.Writer = (block, sb) =>
+      {
+        var value = GetMissionLengthScale(block);
+        sb.Append($"{value:0.00}x");
+      };
+      _missionLengthControl.Getter = GetMissionLengthScale;
+      _missionLengthControl.Setter = SetMissionLengthScale;
+      MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(_missionLengthControl);
 
       var startMission = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlButton, IMyConveyorSorter>("MmStartMission");
       startMission.Title = MyStringId.GetOrCompute("Start Mining Mission");
@@ -373,6 +391,23 @@ namespace MiningMissionsV1.Support
       return ore != null ? ore.Name : "Iron";
     }
 
+    public static float GetMissionLengthScale(IMyTerminalBlock block)
+    {
+      if (block == null)
+        return 1.0f;
+
+      float value;
+      if (!MissionLengthScales.TryGetValue(block.EntityId, out value))
+        return 1.0f;
+
+      if (value < 0.5f)
+        return 0.5f;
+      if (value > 2.0f)
+        return 2.0f;
+
+      return value;
+    }
+
     public class PilotProfile
     {
       public readonly long Key;
@@ -391,6 +426,24 @@ namespace MiningMissionsV1.Support
         Yield = yield;
         Speed = speed;
       }
+    }
+
+    private static void SetMissionLengthScale(IMyTerminalBlock block, float value)
+    {
+      if (block == null)
+        return;
+
+      if (value < 0.5f)
+        value = 0.5f;
+      else if (value > 2.0f)
+        value = 2.0f;
+
+      MissionLengthScales[block.EntityId] = value;
+      MyAPIGateway.Utilities.InvokeOnGameThread(() =>
+      {
+        block.SetDetailedInfoDirty();
+        block.RefreshCustomInfo();
+      });
     }
 
     public class OreOption

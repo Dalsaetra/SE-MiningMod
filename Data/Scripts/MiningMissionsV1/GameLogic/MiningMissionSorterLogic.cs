@@ -125,7 +125,8 @@ namespace MiningMissionsV1.GameLogic
       var pilot = MiningMissionControls.GetSelectedPilot(_block);
       var speedSkill = pilot != null ? pilot.Speed : 0;
       var oreName = MiningMissionControls.GetSelectedOreName(_block);
-      var expectedSeconds = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, maxAcceleration, maxDirectionalCount);
+      var missionScale = MiningMissionControls.GetMissionLengthScale(_block);
+      var expectedSeconds = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, maxAcceleration, maxDirectionalCount) * missionScale;
       var accelChanged = Math.Abs(maxAcceleration - _lastMaxAcceleration) > 0.01d;
       var drillChanged = maxDirectionalCount != _lastDrillCount;
       var pilotChanged = pilotKey != _lastPilotKey;
@@ -155,7 +156,8 @@ namespace MiningMissionsV1.GameLogic
       var pilot = MiningMissionControls.GetSelectedPilot(block);
       var speedSkill = pilot != null ? pilot.Speed : 0;
       var oreName = MiningMissionControls.GetSelectedOreName(block);
-      var expected = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, accel, count);
+      var missionScale = MiningMissionControls.GetMissionLengthScale(block);
+      var expected = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, accel, count) * missionScale;
       if (expected < 0d)
         expected = 0d;
       _lastExpectedSeconds = expected;
@@ -165,6 +167,8 @@ namespace MiningMissionsV1.GameLogic
       {
         sb.AppendLine($"Pilot: {pilot.Name}");
         sb.AppendLine($"Skill {pilot.Skill} | Reliability {pilot.Reliability} | Yield {pilot.Yield} | Speed {pilot.Speed}");
+        var expectedYield = MiningMissionSession.EstimateYieldMeanUnits(pilot.Yield, pilot.Skill, count, oreName) * missionScale;
+        sb.AppendLine($"Expected yield: {expectedYield:0} {oreName}");
       }
     }
 
