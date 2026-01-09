@@ -45,6 +45,7 @@ namespace MiningMissionsV1.Session
     private const double DrillBeta = 0.45;
     private const double RYieldSkill = 0.10;
     private const double MinYieldVarianceFactor = 0.5;
+    private const int ReliabilityTicks = 5;
 
     private const double PriceSkillRateMultiplier = 0.10;
     private static readonly long[] BasePriceBySkill = { 0, 1000, 2000, 3000, 4500, 6000 };
@@ -314,7 +315,12 @@ namespace MiningMissionsV1.Session
       if (yieldUnits < 1d)
         yieldUnits = 1d;
 
+      var reliabilitySkill = pilot != null ? pilot.Reliability : 0;
       var missionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount) * missionScale;
+      double returnProgress;
+      var yieldFactor = ResolveMissionYieldFactor(reliabilitySkill, missionDuration, ReliabilityTicks, Rng, out returnProgress);
+      yieldUnits *= yieldFactor;
+      missionDuration *= returnProgress;
       var missionCost = EstimateMissionCost(miningSkill, oreSubtype, missionDuration);
       if (!TryChargeMissionCost(block, grid, missionCost))
       {
@@ -589,6 +595,91 @@ namespace MiningMissionsV1.Session
       return value;
     }
 
+    private double ResolveMissionYieldFactor(int reliabilitySkill0to5, double missionSeconds, int ticks, Random rng, out double returnProgress)
+    {
+      var pSuccess = ComputeMissionSuccessProbability(reliabilitySkill0to5, missionSeconds);
+      var pTick = PerTickFailureProbability(pSuccess, ticks);
+      var tFail = SampleFailureTick(pTick, ticks, rng);
+
+      if (tFail > ticks)
+      {
+        returnProgress = 1.0;
+        return 1.0;
+      }
+
+      var returnTick = Math.Min(tFail + 1, ticks);
+      returnProgress = (double)returnTick / ticks;
+      var yieldProgress = (double)tFail / ticks;
+      return Math.Pow(yieldProgress, 0.8);
+    }
+
+    private static double ComputeMissionSuccessProbability(int reliabilitySkill0to5, double missionSeconds, double pMin = 0.85, double pMax = 0.995, double gamma = 1.7)
+    {
+      var r = ClampInt(reliabilitySkill0to5, 0, 5);
+      var x = r / 5.0;
+      var pBase = pMin + (pMax - pMin) * Math.Pow(x, gamma);
+      var lengthFactor = MissionLengthFactor(missionSeconds, GetLengthRefSeconds(reliabilitySkill0to5));
+      return Math.Min(pBase * lengthFactor, 0.999);
+    }
+
+    private static double MissionLengthFactor(double missionSeconds, double tRefSeconds, double lambda = 0.25, double fMin = 0.5)
+    {
+      if (missionSeconds <= tRefSeconds)
+        return 1.0;
+
+      var f = Math.Pow(tRefSeconds / missionSeconds, lambda);
+      return Clamp(f, fMin, 1.0);
+    }
+
+    private static double GetLengthRefSeconds(int reliabilitySkill0to5)
+    {
+      var r = ClampInt(reliabilitySkill0to5, 0, 5);
+      switch (r)
+      {
+        case 0:
+          return 300.0;
+        case 1:
+          return 600.0;
+        case 2:
+          return 1200.0;
+        case 3:
+          return 1800.0;
+        case 4:
+          return 2400.0;
+        default:
+          return 3000.0;
+      }
+    }
+
+    private static double PerTickFailureProbability(double pSuccess, int ticks)
+    {
+      if (ticks <= 0)
+        return 1.0;
+
+      if (pSuccess <= 0.0)
+        return 1.0;
+
+      if (pSuccess >= 1.0)
+        return 0.0;
+
+      return 1.0 - Math.Pow(pSuccess, 1.0 / ticks);
+    }
+
+    private static int SampleFailureTick(double pTick, int ticks, Random rng)
+    {
+      if (ticks <= 0)
+        return 1;
+
+      if (pTick <= 0.0)
+        return ticks + 1;
+
+      if (pTick >= 1.0)
+        return 1;
+
+      var u = Math.Max(rng.NextDouble(), 1e-12);
+      return (int)Math.Ceiling(Math.Log(1.0 - u) / Math.Log(1.0 - pTick));
+    }
+
     private double ComputeYieldUnits(double meanUnits, int yieldSkill0to5, string oreSubtype)
     {
       var p = GetOreYieldParams(oreSubtype);
@@ -616,6 +707,11 @@ namespace MiningMissionsV1.Session
       var minutes = Math.Max(0d, missionDurationSeconds / 60d);
       var cost = baseCost + (rate * skillRate * minutes);
       return (long)Math.Ceiling(cost);
+    }
+
+    public static double EstimateMissionSuccessProbability(int reliabilitySkill0to5, double missionSeconds)
+    {
+      return ComputeMissionSuccessProbability(reliabilitySkill0to5, missionSeconds);
     }
 
     private static int GetOreRarityLevel(string oreSubtype)
