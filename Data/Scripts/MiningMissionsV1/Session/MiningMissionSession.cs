@@ -316,26 +316,36 @@ namespace MiningMissionsV1.Session
         yieldUnits = 1d;
 
       var reliabilitySkill = pilot != null ? pilot.Reliability : 0;
-      var missionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount) * missionScale;
+      var fullMissionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount) * missionScale;
       double returnProgress;
       bool missionFailed;
-      var yieldFactor = ResolveMissionYieldFactor(reliabilitySkill, missionDuration, ReliabilityTicks, Rng, out returnProgress, out missionFailed);
+      var yieldFactor = ResolveMissionYieldFactor(reliabilitySkill, fullMissionDuration, ReliabilityTicks, Rng, out returnProgress, out missionFailed);
       yieldUnits *= yieldFactor;
-      missionDuration *= returnProgress;
-      var missionCost = EstimateMissionCost(miningSkill, oreSubtype, missionDuration);
-      if (!TryChargeMissionCost(block, grid, missionCost))
+      var missionDuration = fullMissionDuration * returnProgress;
+      var chargeIdentityId = GetChargeIdentityId(block, grid);
+      if (chargeIdentityId <= 0)
+      {
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", "No valid owner to charge for this mission.");
+        return;
+      }
+
+      var fullMissionCost = EstimateMissionCost(miningSkill, oreSubtype, fullMissionDuration);
+      if (!TryChargeMissionCost(chargeIdentityId, fullMissionCost))
       {
         MyAPIGateway.Utilities.ShowMessage("MiningMissions", "Not enough credits to start the mission.");
         return;
       }
 
-      if (missionCost > 0)
-        MyAPIGateway.Utilities.ShowMessage("MiningMissions", $"Mission cost: {missionCost} credits.");
+      if (fullMissionCost > 0)
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", $"Charged {fullMissionCost} credits for the mission.");
 
       PlayJumpEffect(grid, JumpOutEffect, JumpOutSound);
       var entry = CreateEntry(grid, countdown: true, oreSubtype: oreSubtype, missionDurationSeconds: missionDuration);
       entry.OreUnits = yieldUnits;
       entry.MissionFailed = missionFailed;
+      entry.MiningSkill = miningSkill;
+      entry.ChargeIdentityId = chargeIdentityId;
+      entry.FullMissionCost = fullMissionCost;
       _active.Add(entry);
       SaveToStorage();
     }
@@ -617,7 +627,7 @@ namespace MiningMissionsV1.Session
       return Math.Pow(yieldProgress, 0.8);
     }
 
-    private static double ComputeMissionSuccessProbability(int reliabilitySkill0to5, double missionSeconds, double pMin = 0.85, double pMax = 0.995, double gamma = 1.7)
+    private static double ComputeMissionSuccessProbability(int reliabilitySkill0to5, double missionSeconds, double pMin = 0.75, double pMax = 0.995, double gamma = 1.7)
     {
       var r = ClampInt(reliabilitySkill0to5, 0, 5);
       var x = r / 5.0;
@@ -732,12 +742,11 @@ namespace MiningMissionsV1.Session
       return rarity;
     }
 
-    private bool TryChargeMissionCost(IMyTerminalBlock block, IMyCubeGrid grid, long missionCost)
+    private bool TryChargeMissionCost(long identityId, long missionCost)
     {
       if (missionCost <= 0)
         return true;
 
-      var identityId = GetChargeIdentityId(block, grid);
       if (identityId <= 0)
         return false;
 
@@ -755,6 +764,24 @@ namespace MiningMissionsV1.Session
         return false;
 
       player.RequestChangeBalance(-missionCost);
+      return true;
+    }
+
+    private bool TryRefundMissionCost(long identityId, long refund)
+    {
+      if (refund <= 0)
+        return true;
+
+      if (identityId <= 0)
+        return false;
+
+      _players.Clear();
+      MyAPIGateway.Players.GetPlayers(_players, p => p.IdentityId == identityId);
+      if (_players.Count == 0)
+        return false;
+
+      var player = _players[0];
+      player.RequestChangeBalance(refund);
       return true;
     }
 
@@ -880,6 +907,16 @@ namespace MiningMissionsV1.Session
 
       var status = entry.MissionFailed ? "Mission ended early." : "Mission successful.";
       MyAPIGateway.Utilities.ShowMessage("MiningMissions", status);
+
+      var missionCost = EstimateMissionCost(entry.MiningSkill, oreSubtype, entry.MissionDurationSeconds);
+      var refund = entry.FullMissionCost - missionCost;
+      if (entry.MissionFailed && refund > 0)
+      {
+        if (TryRefundMissionCost(entry.ChargeIdentityId, refund))
+          MyAPIGateway.Utilities.ShowMessage("MiningMissions", $"Refunded {refund} credits due to early return.");
+        else
+          MyAPIGateway.Utilities.ShowMessage("MiningMissions", "Mission complete, but refund could not be issued.");
+      }
     }
 
     private void BeginMission(MissionEntry entry)
@@ -1197,6 +1234,12 @@ namespace MiningMissionsV1.Session
       public double OreUnits;
       [ProtoMember(14)]
       public bool MissionFailed;
+      [ProtoMember(15)]
+      public int MiningSkill;
+      [ProtoMember(16)]
+      public long ChargeIdentityId;
+      [ProtoMember(17)]
+      public long FullMissionCost;
     }
   }
 }
