@@ -318,7 +318,8 @@ namespace MiningMissionsV1.Session
       var reliabilitySkill = pilot != null ? pilot.Reliability : 0;
       var missionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount) * missionScale;
       double returnProgress;
-      var yieldFactor = ResolveMissionYieldFactor(reliabilitySkill, missionDuration, ReliabilityTicks, Rng, out returnProgress);
+      bool missionFailed;
+      var yieldFactor = ResolveMissionYieldFactor(reliabilitySkill, missionDuration, ReliabilityTicks, Rng, out returnProgress, out missionFailed);
       yieldUnits *= yieldFactor;
       missionDuration *= returnProgress;
       var missionCost = EstimateMissionCost(miningSkill, oreSubtype, missionDuration);
@@ -334,6 +335,7 @@ namespace MiningMissionsV1.Session
       PlayJumpEffect(grid, JumpOutEffect, JumpOutSound);
       var entry = CreateEntry(grid, countdown: true, oreSubtype: oreSubtype, missionDurationSeconds: missionDuration);
       entry.OreUnits = yieldUnits;
+      entry.MissionFailed = missionFailed;
       _active.Add(entry);
       SaveToStorage();
     }
@@ -595,7 +597,7 @@ namespace MiningMissionsV1.Session
       return value;
     }
 
-    private double ResolveMissionYieldFactor(int reliabilitySkill0to5, double missionSeconds, int ticks, Random rng, out double returnProgress)
+    private double ResolveMissionYieldFactor(int reliabilitySkill0to5, double missionSeconds, int ticks, Random rng, out double returnProgress, out bool missionFailed)
     {
       var pSuccess = ComputeMissionSuccessProbability(reliabilitySkill0to5, missionSeconds);
       var pTick = PerTickFailureProbability(pSuccess, ticks);
@@ -604,12 +606,14 @@ namespace MiningMissionsV1.Session
       if (tFail > ticks)
       {
         returnProgress = 1.0;
+        missionFailed = false;
         return 1.0;
       }
 
       var returnTick = Math.Min(tFail + 1, ticks);
       returnProgress = (double)returnTick / ticks;
       var yieldProgress = (double)tFail / ticks;
+      missionFailed = true;
       return Math.Pow(yieldProgress, 0.8);
     }
 
@@ -873,6 +877,9 @@ namespace MiningMissionsV1.Session
       var oreSubtype = string.IsNullOrEmpty(entry.OreSubtype) ? DefaultOreSubtype : entry.OreSubtype;
       var oreUnits = entry.OreUnits > 0d ? entry.OreUnits : EstimateYieldMeanUnits(0, 0, 1, oreSubtype);
       AddOreToGrid(grid, (MyFixedPoint)oreUnits, oreSubtype);
+
+      var status = entry.MissionFailed ? "Mission ended early." : "Mission successful.";
+      MyAPIGateway.Utilities.ShowMessage("MiningMissions", status);
     }
 
     private void BeginMission(MissionEntry entry)
@@ -1188,6 +1195,8 @@ namespace MiningMissionsV1.Session
       public double MissionDurationSeconds;
       [ProtoMember(13)]
       public double OreUnits;
+      [ProtoMember(14)]
+      public bool MissionFailed;
     }
   }
 }
