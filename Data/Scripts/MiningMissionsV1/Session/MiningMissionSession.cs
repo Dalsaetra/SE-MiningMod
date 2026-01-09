@@ -314,8 +314,6 @@ namespace MiningMissionsV1.Session
       if (yieldUnits < 1d)
         yieldUnits = 1d;
 
-      PlayJumpEffect(grid, JumpOutEffect, JumpOutSound);
-
       var missionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount) * missionScale;
       var missionCost = EstimateMissionCost(miningSkill, oreSubtype, missionDuration);
       if (!TryChargeMissionCost(block, grid, missionCost))
@@ -326,6 +324,8 @@ namespace MiningMissionsV1.Session
 
       if (missionCost > 0)
         MyAPIGateway.Utilities.ShowMessage("MiningMissions", $"Mission cost: {missionCost} credits.");
+
+      PlayJumpEffect(grid, JumpOutEffect, JumpOutSound);
       var entry = CreateEntry(grid, countdown: true, oreSubtype: oreSubtype, missionDurationSeconds: missionDuration);
       entry.OreUnits = yieldUnits;
       _active.Add(entry);
