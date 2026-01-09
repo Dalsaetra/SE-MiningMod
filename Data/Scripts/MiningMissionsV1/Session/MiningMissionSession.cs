@@ -36,6 +36,11 @@ namespace MiningMissionsV1.Session
     private readonly List<MissionEntry> _active = new List<MissionEntry>();
     private readonly List<IMyCockpit> _cockpits = new List<IMyCockpit>();
     private readonly List<IMyCargoContainer> _cargo = new List<IMyCargoContainer>();
+    private readonly List<IMyShipDrill> _drills = new List<IMyShipDrill>();
+    private readonly List<IMyGyro> _gyros = new List<IMyGyro>();
+    private readonly List<IMyThrust> _thrusters = new List<IMyThrust>();
+    private readonly List<IMyRadioAntenna> _antennas = new List<IMyRadioAntenna>();
+    private readonly HashSet<Base6Directions.Direction> _thrustDirs = new HashSet<Base6Directions.Direction>();
 
     public override void LoadData()
     {
@@ -99,6 +104,41 @@ namespace MiningMissionsV1.Session
         return;
       }
 
+      var terminalSystem = MyAPIGateway.TerminalActionsHelper.GetTerminalSystemForGrid(grid);
+      if (terminalSystem == null)
+        return;
+
+      if (!HasMinimumDrills(terminalSystem, grid, 2))
+      {
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", "Requires at least 2 drills.");
+        return;
+      }
+
+      if (!HasGyroscope(terminalSystem, grid))
+      {
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", "Requires at least 1 gyroscope.");
+        return;
+      }
+
+      if (!HasCockpit(terminalSystem, grid))
+      {
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", "Requires at least 1 cockpit.");
+        return;
+      }
+
+      string missingDirections;
+      if (!HasThrustersAllDirections(terminalSystem, grid, out missingDirections))
+      {
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", $"Missing thrusters: {missingDirections}.");
+        return;
+      }
+
+      if (!HasAntenna(terminalSystem, grid))
+      {
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", "Requires at least 1 antenna.");
+        return;
+      }
+
       var oreAmount = ComputeOreAmount(OreMassKg);
       if (!HasCargoCapacity(grid, oreAmount))
       {
@@ -121,6 +161,72 @@ namespace MiningMissionsV1.Session
           return true;
       }
 
+      return false;
+    }
+
+    private bool HasMinimumDrills(IMyGridTerminalSystem terminalSystem, IMyCubeGrid grid, int minCount)
+    {
+      _drills.Clear();
+      terminalSystem.GetBlocksOfType(_drills, d => d.CubeGrid == grid);
+      return _drills.Count >= minCount;
+    }
+
+    private bool HasGyroscope(IMyGridTerminalSystem terminalSystem, IMyCubeGrid grid)
+    {
+      _gyros.Clear();
+      terminalSystem.GetBlocksOfType(_gyros, g => g.CubeGrid == grid);
+      return _gyros.Count > 0;
+    }
+
+    private bool HasCockpit(IMyGridTerminalSystem terminalSystem, IMyCubeGrid grid)
+    {
+      _cockpits.Clear();
+      terminalSystem.GetBlocksOfType(_cockpits, c => c.CubeGrid == grid);
+      return _cockpits.Count > 0;
+    }
+
+    private bool HasAntenna(IMyGridTerminalSystem terminalSystem, IMyCubeGrid grid)
+    {
+      _antennas.Clear();
+      terminalSystem.GetBlocksOfType(_antennas, a => a.CubeGrid == grid);
+      return _antennas.Count > 0;
+    }
+
+    private bool HasThrustersAllDirections(IMyGridTerminalSystem terminalSystem, IMyCubeGrid grid, out string missingDirections)
+    {
+      _thrusters.Clear();
+      _thrustDirs.Clear();
+      terminalSystem.GetBlocksOfType(_thrusters, t => t.CubeGrid == grid);
+
+      for (int i = 0; i < _thrusters.Count; i++)
+      {
+        var thrustDir = Base6Directions.GetOppositeDirection(_thrusters[i].Orientation.Forward);
+        _thrustDirs.Add(thrustDir);
+        if (_thrustDirs.Count == 6)
+          break;
+      }
+
+      var missing = new List<string>(6);
+      if (!_thrustDirs.Contains(Base6Directions.Direction.Forward))
+        missing.Add("Forward");
+      if (!_thrustDirs.Contains(Base6Directions.Direction.Backward))
+        missing.Add("Backward");
+      if (!_thrustDirs.Contains(Base6Directions.Direction.Left))
+        missing.Add("Left");
+      if (!_thrustDirs.Contains(Base6Directions.Direction.Right))
+        missing.Add("Right");
+      if (!_thrustDirs.Contains(Base6Directions.Direction.Up))
+        missing.Add("Up");
+      if (!_thrustDirs.Contains(Base6Directions.Direction.Down))
+        missing.Add("Down");
+
+      if (missing.Count == 0)
+      {
+        missingDirections = string.Empty;
+        return true;
+      }
+
+      missingDirections = string.Join(", ", missing);
       return false;
     }
 
