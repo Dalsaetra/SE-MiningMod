@@ -7,6 +7,8 @@ using Sandbox.ModAPI;
 
 using ProtoBuf;
 
+using MiningMissionsV1.Support;
+
 using VRage;
 using VRage.Game;
 using VRage.Game.Components;
@@ -25,7 +27,7 @@ namespace MiningMissionsV1.Session
     private const double CountdownSeconds = 10.0;
     private const int FramesPerSecond = 60;
     private const float OreMassKg = 1000f;
-    private const string OreSubtype = "Iron";
+    private const string DefaultOreSubtype = "Iron";
     private const string JumpOutEffect = "Warp_Prototech";
     private const string JumpInEffect = "Warp_Prototech";
     private const string JumpOutSound = "ShipJumpDriveJumpOut";
@@ -139,16 +141,17 @@ namespace MiningMissionsV1.Session
         return;
       }
 
-      var oreAmount = ComputeOreAmount(OreMassKg);
-      if (!HasCargoCapacity(grid, oreAmount))
+      var oreSubtype = MiningMissionControls.GetSelectedOreName(block);
+      var oreAmount = ComputeOreAmount(OreMassKg, oreSubtype);
+      if (!HasCargoCapacity(grid, oreAmount, oreSubtype))
       {
-        MyAPIGateway.Utilities.ShowMessage("MiningMissions", "Not enough cargo space for 1000 kg of iron ore.");
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", $"Not enough cargo space for 1000 kg of {oreSubtype} ore.");
         return;
       }
 
       PlayJumpEffect(grid, JumpOutEffect, JumpOutSound);
 
-      var entry = CreateEntry(grid, countdown: true);
+      var entry = CreateEntry(grid, countdown: true, oreSubtype: oreSubtype);
       _active.Add(entry);
       SaveToStorage();
     }
@@ -230,7 +233,7 @@ namespace MiningMissionsV1.Session
       return false;
     }
 
-    private MissionEntry CreateEntry(IMyCubeGrid grid, bool countdown)
+    private MissionEntry CreateEntry(IMyCubeGrid grid, bool countdown, string oreSubtype)
     {
       var matrix = grid.WorldMatrix;
       var radius = (float)grid.PositionComp.WorldAABB.HalfExtents.Length();
@@ -246,6 +249,7 @@ namespace MiningMissionsV1.Session
         RemainingSeconds = duration,
         PendingJump = countdown,
         PlayReturnEffect = false,
+        OreSubtype = string.IsNullOrEmpty(oreSubtype) ? DefaultOreSubtype : oreSubtype,
       };
 
       entry.EndFrame = MyAPIGateway.Session.GameplayFrameCounter + (long)(duration * FramesPerSecond);
@@ -276,7 +280,8 @@ namespace MiningMissionsV1.Session
       if (grid == null)
         return;
 
-      AddOreToGrid(grid, ComputeOreAmount(OreMassKg));
+      var oreSubtype = string.IsNullOrEmpty(entry.OreSubtype) ? DefaultOreSubtype : entry.OreSubtype;
+      AddOreToGrid(grid, ComputeOreAmount(OreMassKg, oreSubtype), oreSubtype);
     }
 
     private void BeginMission(MissionEntry entry)
@@ -374,9 +379,9 @@ namespace MiningMissionsV1.Session
       return name;
     }
 
-    private MyFixedPoint ComputeOreAmount(float massKg)
+    private MyFixedPoint ComputeOreAmount(float massKg, string oreSubtype)
     {
-      var def = GetOreDefinition();
+      var def = GetOreDefinition(oreSubtype);
       if (def == null)
         return (MyFixedPoint)massKg;
 
@@ -387,9 +392,9 @@ namespace MiningMissionsV1.Session
       return (MyFixedPoint)(massKg / unitMass);
     }
 
-    private bool HasCargoCapacity(IMyCubeGrid grid, MyFixedPoint amount)
+    private bool HasCargoCapacity(IMyCubeGrid grid, MyFixedPoint amount, string oreSubtype)
     {
-      var def = GetOreDefinition();
+      var def = GetOreDefinition(oreSubtype);
       if (def == null)
         return false;
 
@@ -421,9 +426,9 @@ namespace MiningMissionsV1.Session
       return totalCapacity >= (double)amount;
     }
 
-    private void AddOreToGrid(IMyCubeGrid grid, MyFixedPoint amount)
+    private void AddOreToGrid(IMyCubeGrid grid, MyFixedPoint amount, string oreSubtype)
     {
-      var def = GetOreDefinition();
+      var def = GetOreDefinition(oreSubtype);
       if (def == null)
         return;
 
@@ -435,8 +440,9 @@ namespace MiningMissionsV1.Session
       terminalSystem.GetBlocksOfType(_cargo, c => c.CubeGrid == grid);
 
       var remaining = amount;
-      var oreObject = new MyObjectBuilder_Ore { SubtypeName = OreSubtype };
-      var oreId = new MyDefinitionId(typeof(MyObjectBuilder_Ore), OreSubtype);
+      var oreName = string.IsNullOrEmpty(oreSubtype) ? DefaultOreSubtype : oreSubtype;
+      var oreObject = new MyObjectBuilder_Ore { SubtypeName = oreName };
+      var oreId = new MyDefinitionId(typeof(MyObjectBuilder_Ore), oreName);
       var unitVolume = (double)def.Volume;
 
       for (int i = 0; i < _cargo.Count; i++)
@@ -473,9 +479,10 @@ namespace MiningMissionsV1.Session
       }
     }
 
-    private MyPhysicalItemDefinition GetOreDefinition()
+    private MyPhysicalItemDefinition GetOreDefinition(string oreSubtype)
     {
-      var oreId = new MyDefinitionId(typeof(MyObjectBuilder_Ore), OreSubtype);
+      var oreName = string.IsNullOrEmpty(oreSubtype) ? DefaultOreSubtype : oreSubtype;
+      var oreId = new MyDefinitionId(typeof(MyObjectBuilder_Ore), oreName);
       return MyDefinitionManager.Static.GetPhysicalItemDefinition(oreId);
     }
 
@@ -568,6 +575,8 @@ namespace MiningMissionsV1.Session
       public bool PendingJump;
       [ProtoMember(10)]
       public bool PlayReturnEffect;
+      [ProtoMember(11)]
+      public string OreSubtype;
     }
   }
 }

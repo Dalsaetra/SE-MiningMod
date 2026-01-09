@@ -358,6 +358,13 @@ namespace MiningMissionsV1.Support
       return GetMinerSelection(block);
     }
 
+    public static string GetSelectedOreName(IMyTerminalBlock block)
+    {
+      var key = GetOreSelection(block);
+      var ore = FindOreByKey(key);
+      return ore != null ? ore.Name : "Iron";
+    }
+
     public class PilotProfile
     {
       public readonly long Key;
