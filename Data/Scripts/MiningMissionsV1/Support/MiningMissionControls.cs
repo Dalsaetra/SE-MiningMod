@@ -124,7 +124,7 @@ namespace MiningMissionsV1.Support
       _missionLengthControl.SupportsMultipleBlocks = false;
       _missionLengthControl.Enabled = Combine(_missionLengthControl.Enabled, IsMiningMissionSorter);
       _missionLengthControl.Visible = Combine(_missionLengthControl.Visible, IsMiningMissionSorter);
-      _missionLengthControl.SetLimits(0.01f, 2.0f);
+      _missionLengthControl.SetLimits(0.01f, 5.0f);
       _missionLengthControl.Writer = (block, sb) =>
       {
         var value = GetMissionLengthScale(block);
@@ -402,8 +402,8 @@ namespace MiningMissionsV1.Support
 
       if (value < 0.01f)
         return 0.01f;
-      if (value > 2.0f)
-        return 2.0f;
+      if (value > 5.0f)
+        return 5.0f;
 
       return value;
     }
@@ -435,8 +435,8 @@ namespace MiningMissionsV1.Support
 
       if (value < 0.01f)
         value = 0.01f;
-      else if (value > 2.0f)
-        value = 2.0f;
+      else if (value > 5.0f)
+        value = 5.0f;
 
       MissionLengthScales[block.EntityId] = value;
       MyAPIGateway.Utilities.InvokeOnGameThread(() =>
