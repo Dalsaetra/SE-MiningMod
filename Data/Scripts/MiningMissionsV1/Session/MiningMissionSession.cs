@@ -46,6 +46,24 @@ namespace MiningMissionsV1.Session
     private const double RYieldSkill = 0.10;
     private const double MinYieldVarianceFactor = 0.5;
 
+    private const double PriceSkillRateMultiplier = 0.10;
+    private static readonly long[] BasePriceBySkill = { 0, 1000, 2000, 3000, 4500, 6000 };
+    private static readonly double[] RatePerMinuteByRarity = { 0.0, 100.0, 200.0, 350.0, 500.0, 750.0 };
+    private static readonly Dictionary<string, int> OreRarity = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+    {
+      ["Stone"] = 1,
+      ["Iron"] = 1,
+      ["Nickel"] = 1,
+      ["Silicon"] = 1,
+      ["Ice"] = 1,
+      ["Cobalt"] = 2,
+      ["Magnesium"] = 3,
+      ["Silver"] = 4,
+      ["Gold"] = 4,
+      ["Platinum"] = 5,
+      ["Uranium"] = 5
+    };
+
     private static readonly Random Rng = new Random();
     private static readonly Dictionary<string, OreSpeedParams> OreParams = new Dictionary<string, OreSpeedParams>(StringComparer.OrdinalIgnoreCase)
     {
@@ -177,6 +195,7 @@ namespace MiningMissionsV1.Session
     private readonly List<IMyThrust> _thrusters = new List<IMyThrust>();
     private readonly List<IMyRadioAntenna> _antennas = new List<IMyRadioAntenna>();
     private readonly HashSet<Base6Directions.Direction> _thrustDirs = new HashSet<Base6Directions.Direction>();
+    private readonly List<IMyPlayer> _players = new List<IMyPlayer>();
 
     public override void LoadData()
     {
@@ -298,6 +317,15 @@ namespace MiningMissionsV1.Session
       PlayJumpEffect(grid, JumpOutEffect, JumpOutSound);
 
       var missionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount) * missionScale;
+      var missionCost = EstimateMissionCost(miningSkill, oreSubtype, missionDuration);
+      if (!TryChargeMissionCost(block, grid, missionCost))
+      {
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", "Not enough credits to start the mission.");
+        return;
+      }
+
+      if (missionCost > 0)
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", $"Mission cost: {missionCost} credits.");
       var entry = CreateEntry(grid, countdown: true, oreSubtype: oreSubtype, missionDurationSeconds: missionDuration);
       entry.OreUnits = yieldUnits;
       _active.Add(entry);
@@ -576,6 +604,72 @@ namespace MiningMissionsV1.Session
         value = 1d;
 
       return value;
+    }
+
+    public static long EstimateMissionCost(int miningSkill0to5, string oreSubtype, double missionDurationSeconds)
+    {
+      var skill = ClampInt(miningSkill0to5, 0, 5);
+      var baseCost = BasePriceBySkill[Math.Min(skill, BasePriceBySkill.Length - 1)];
+      var rarity = GetOreRarityLevel(oreSubtype);
+      var rate = RatePerMinuteByRarity[Math.Min(rarity, RatePerMinuteByRarity.Length - 1)];
+      var skillRate = 1.0 + PriceSkillRateMultiplier * skill;
+      var minutes = Math.Max(0d, missionDurationSeconds / 60d);
+      var cost = baseCost + (rate * skillRate * minutes);
+      return (long)Math.Ceiling(cost);
+    }
+
+    private static int GetOreRarityLevel(string oreSubtype)
+    {
+      int rarity;
+      if (string.IsNullOrEmpty(oreSubtype) || !OreRarity.TryGetValue(oreSubtype, out rarity))
+        return 1;
+
+      if (rarity < 1)
+        return 1;
+      if (rarity > 5)
+        return 5;
+
+      return rarity;
+    }
+
+    private bool TryChargeMissionCost(IMyTerminalBlock block, IMyCubeGrid grid, long missionCost)
+    {
+      if (missionCost <= 0)
+        return true;
+
+      var identityId = GetChargeIdentityId(block, grid);
+      if (identityId <= 0)
+        return false;
+
+      _players.Clear();
+      MyAPIGateway.Players.GetPlayers(_players, p => p.IdentityId == identityId);
+      if (_players.Count == 0)
+        return false;
+
+      var player = _players[0];
+      long balance;
+      if (!player.TryGetBalanceInfo(out balance))
+        return false;
+
+      if (balance < missionCost)
+        return false;
+
+      player.RequestChangeBalance(-missionCost);
+      return true;
+    }
+
+    private long GetChargeIdentityId(IMyTerminalBlock block, IMyCubeGrid grid)
+    {
+      if (block != null)
+      {
+        if (block.OwnerId != 0)
+          return block.OwnerId;
+      }
+
+      if (grid != null && grid.BigOwners != null && grid.BigOwners.Count > 0)
+        return grid.BigOwners[0];
+
+      return 0;
     }
 
     private static OreYieldParams GetOreYieldParams(string oreSubtype)

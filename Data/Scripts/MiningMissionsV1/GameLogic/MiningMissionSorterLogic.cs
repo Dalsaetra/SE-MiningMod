@@ -169,6 +169,8 @@ namespace MiningMissionsV1.GameLogic
         sb.AppendLine($"Skill {pilot.Skill} | Reliability {pilot.Reliability} | Yield {pilot.Yield} | Speed {pilot.Speed}");
         var expectedYield = MiningMissionSession.EstimateYieldMeanUnits(pilot.Yield, pilot.Skill, count, oreName) * missionScale;
         sb.AppendLine($"Expected yield: {expectedYield:0} {oreName}");
+        var price = MiningMissionSession.EstimateMissionCost(pilot.Skill, oreName, expected);
+        sb.AppendLine($"Mission cost: {price} credits");
       }
     }
 
