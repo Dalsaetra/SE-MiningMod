@@ -18,6 +18,7 @@ namespace MiningMissionsV1.Support
     private const string SorterSubtypeSmall = "MiningMissionSorterSmall";
     private static bool _controlsCreated;
     private static readonly Dictionary<long, long> MinerSelections = new Dictionary<long, long>();
+    private static readonly Dictionary<long, long> OreSelections = new Dictionary<long, long>();
     private static readonly List<PilotProfile> Pilots = new List<PilotProfile>
     {
       new PilotProfile(0, "Doug",     skill: 1, reliability: 3, yield: 1, speed: 3),
@@ -33,6 +34,22 @@ namespace MiningMissionsV1.Support
       new PilotProfile(8, "Jackal",   skill: 5, reliability: 2, yield: 3, speed: 5),
       new PilotProfile(9, "Singer",   skill: 5, reliability: 5, yield: 5, speed: 1),
     };
+    private static readonly List<OreOption> Ores = new List<OreOption>
+    {
+      new OreOption(0, "Stone", requiredSkill: 1),
+      new OreOption(1, "Iron", requiredSkill: 1),
+      new OreOption(2, "Nickel", requiredSkill: 1),
+      new OreOption(3, "Silicon", requiredSkill: 1),
+      new OreOption(4, "Ice", requiredSkill: 1),
+      new OreOption(5, "Cobalt", requiredSkill: 2),
+      new OreOption(6, "Magnesium", requiredSkill: 3),
+      new OreOption(7, "Silver", requiredSkill: 4),
+      new OreOption(8, "Gold", requiredSkill: 4),
+      new OreOption(9, "Platinum", requiredSkill: 5),
+      new OreOption(10, "Uranium", requiredSkill: 5)
+    };
+    private static int _lastUiPilotSkill = 1;
+    private static IMyTerminalControlCombobox _oreSelectControl;
 
     internal static void EnsureControls()
     {
@@ -87,6 +104,17 @@ namespace MiningMissionsV1.Support
       minerSelect.Getter = GetMinerSelection;
       minerSelect.Setter = SetMinerSelection;
       MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(minerSelect);
+
+      _oreSelectControl = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlCombobox, IMyConveyorSorter>("MmOreSelect");
+      _oreSelectControl.Title = MyStringId.GetOrCompute("Ore");
+      _oreSelectControl.Tooltip = MyStringId.GetOrCompute("Select the ore to mine.");
+      _oreSelectControl.SupportsMultipleBlocks = false;
+      _oreSelectControl.Enabled = Combine(_oreSelectControl.Enabled, IsMiningMissionSorter);
+      _oreSelectControl.Visible = Combine(_oreSelectControl.Visible, IsMiningMissionSorter);
+      _oreSelectControl.ComboBoxContent = OreComboContent;
+      _oreSelectControl.Getter = GetOreSelection;
+      _oreSelectControl.Setter = SetOreSelection;
+      MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(_oreSelectControl);
 
       var startMission = MyAPIGateway.TerminalControls.CreateControl<IMyTerminalControlButton, IMyConveyorSorter>("MmStartMission");
       startMission.Title = MyStringId.GetOrCompute("Start Mining Mission");
@@ -166,7 +194,20 @@ namespace MiningMissionsV1.Support
       for (int i = 0; i < Pilots.Count; i++)
       {
         var pilot = Pilots[i];
-        items.Add(new MyTerminalControlComboBoxItem { Key = pilot.Key, Value = MyStringId.GetOrCompute(pilot.Name) });
+        items.Add(new MyTerminalControlComboBoxItem { Key = i, Value = MyStringId.GetOrCompute(pilot.Name) });
+      }
+    }
+
+    private static void OreComboContent(List<MyTerminalControlComboBoxItem> items)
+    {
+      var skill = _lastUiPilotSkill;
+      for (int i = 0; i < Ores.Count; i++)
+      {
+        var ore = Ores[i];
+        if (ore.RequiredSkill > skill)
+          continue;
+
+        items.Add(new MyTerminalControlComboBoxItem { Key = ore.Key, Value = MyStringId.GetOrCompute(ore.Name) });
       }
     }
 
@@ -188,8 +229,9 @@ namespace MiningMissionsV1.Support
       if (block == null)
         return 0;
 
-      long value;
-      return MinerSelections.TryGetValue(block.EntityId, out value) ? value : 0;
+      var value = GetMinerSelectionRaw(block);
+      UpdateLastUiPilotSkill(value);
+      return value;
     }
 
     private static void SetMinerSelection(IMyTerminalBlock block, long value)
@@ -198,11 +240,102 @@ namespace MiningMissionsV1.Support
         return;
 
       MinerSelections[block.EntityId] = value;
+      UpdateLastUiPilotSkill(value);
+      EnsureValidOreSelection(block);
+      MyAPIGateway.Utilities.InvokeOnGameThread(() =>
+      {
+        block.SetDetailedInfoDirty();
+        block.RefreshCustomInfo();
+        _oreSelectControl?.UpdateVisual();
+      });
+    }
+
+    private static long GetOreSelection(IMyTerminalBlock block)
+    {
+      if (block == null)
+        return 0;
+
+      UpdateLastUiPilotSkill(GetMinerSelectionRaw(block));
+      EnsureValidOreSelection(block);
+      long value;
+      return OreSelections.TryGetValue(block.EntityId, out value) ? value : GetDefaultOreKey(_lastUiPilotSkill);
+    }
+
+    private static void SetOreSelection(IMyTerminalBlock block, long value)
+    {
+      if (block == null)
+        return;
+
+      UpdateLastUiPilotSkill(GetMinerSelectionRaw(block));
+      var ore = FindOreByKey(value);
+      if (ore == null || ore.RequiredSkill > _lastUiPilotSkill)
+        value = GetDefaultOreKey(_lastUiPilotSkill);
+
+      OreSelections[block.EntityId] = value;
       MyAPIGateway.Utilities.InvokeOnGameThread(() =>
       {
         block.SetDetailedInfoDirty();
         block.RefreshCustomInfo();
       });
+    }
+
+    private static void EnsureValidOreSelection(IMyTerminalBlock block)
+    {
+      if (block == null)
+        return;
+
+      long value;
+      if (!OreSelections.TryGetValue(block.EntityId, out value))
+      {
+        OreSelections[block.EntityId] = GetDefaultOreKey(_lastUiPilotSkill);
+        return;
+      }
+
+      var ore = FindOreByKey(value);
+      if (ore == null || ore.RequiredSkill > _lastUiPilotSkill)
+        OreSelections[block.EntityId] = GetDefaultOreKey(_lastUiPilotSkill);
+    }
+
+    private static long GetDefaultOreKey(int skill)
+    {
+      for (int i = 0; i < Ores.Count; i++)
+      {
+        if (Ores[i].RequiredSkill <= skill)
+          return Ores[i].Key;
+      }
+
+      return 0;
+    }
+
+    private static OreOption FindOreByKey(long key)
+    {
+      for (int i = 0; i < Ores.Count; i++)
+      {
+        if (Ores[i].Key == key)
+          return Ores[i];
+      }
+
+      return null;
+    }
+
+    private static long GetMinerSelectionRaw(IMyTerminalBlock block)
+    {
+      if (block == null)
+        return 0;
+
+      long value;
+      return MinerSelections.TryGetValue(block.EntityId, out value) ? value : 0;
+    }
+
+    private static void UpdateLastUiPilotSkill(long key)
+    {
+      if (key < 0 || key >= Pilots.Count)
+      {
+        _lastUiPilotSkill = 1;
+        return;
+      }
+
+      _lastUiPilotSkill = Pilots[(int)key].Skill;
     }
 
     public static PilotProfile GetSelectedPilot(IMyTerminalBlock block)
@@ -211,13 +344,10 @@ namespace MiningMissionsV1.Support
         return null;
 
       var key = GetMinerSelection(block);
-      for (int i = 0; i < Pilots.Count; i++)
-      {
-        if (Pilots[i].Key == key)
-          return Pilots[i];
-      }
+      if (key < 0 || key >= Pilots.Count)
+        return Pilots[0];
 
-      return Pilots[0];
+      return Pilots[(int)key];
     }
 
     public static long GetSelectedPilotKey(IMyTerminalBlock block)
@@ -245,6 +375,20 @@ namespace MiningMissionsV1.Support
         Reliability = reliability;
         Yield = yield;
         Speed = speed;
+      }
+    }
+
+    public class OreOption
+    {
+      public readonly long Key;
+      public readonly string Name;
+      public readonly int RequiredSkill;
+
+      public OreOption(long key, string name, int requiredSkill)
+      {
+        Key = key;
+        Name = name;
+        RequiredSkill = requiredSkill;
       }
     }
 
