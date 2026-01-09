@@ -3,6 +3,7 @@ using MiningMissionsV1.Support;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.ModAPI;
 
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -21,6 +22,7 @@ namespace MiningMissionsV1.GameLogic
     private readonly HashSet<VRage.ModAPI.IMyEntity> _entities = new HashSet<VRage.ModAPI.IMyEntity>();
     private Sandbox.ModAPI.IMyTerminalBlock _block;
     private int _lastDrillCount = -1;
+    private double _lastMaxAcceleration = -1d;
     private bool _customInfoHooked;
 
     public override void Init(MyObjectBuilder_EntityBase objectBuilder)
@@ -114,15 +116,15 @@ namespace MiningMissionsV1.GameLogic
       else
         maxDirectionalCount = entityMaxDirectional;
 
+      var maxAcceleration = GetMaxAcceleration(grid);
+      var accelChanged = Math.Abs(maxAcceleration - _lastMaxAcceleration) > 0.01d;
       var drillChanged = maxDirectionalCount != _lastDrillCount;
-      if (!drillChanged)
+      if (!drillChanged && !accelChanged)
         return;
 
-      if (drillChanged)
-      {
-        _lastDrillCount = maxDirectionalCount;
-        _block.RefreshCustomInfo();
-      }
+      _lastDrillCount = maxDirectionalCount;
+      _lastMaxAcceleration = maxAcceleration;
+      _block.RefreshCustomInfo();
     }
 
     private void AppendCustomInfo(Sandbox.ModAPI.IMyTerminalBlock block, StringBuilder sb)
@@ -133,6 +135,8 @@ namespace MiningMissionsV1.GameLogic
       var count = _lastDrillCount < 0 ? 0 : _lastDrillCount;
       sb.AppendLine("Mining Missions");
       sb.AppendLine($"Max drills in one direction: {count}");
+      var accel = _lastMaxAcceleration < 0 ? 0d : _lastMaxAcceleration;
+      sb.AppendLine($"Max acceleration in one direction: {accel:0.00} m/s^2");
     }
 
     private int GetMaxDirectionalDrillCount(List<Sandbox.ModAPI.IMyShipDrill> drills)
@@ -184,6 +188,33 @@ namespace MiningMissionsV1.GameLogic
         if (counts[i] > max)
           max = counts[i];
       }
+
+      return max;
+    }
+
+    private double GetMaxAcceleration(VRage.Game.ModAPI.IMyCubeGrid grid)
+    {
+      if (grid?.Physics == null)
+        return 0d;
+
+      var mass = (double)grid.Physics.Mass;
+      if (mass <= 0d)
+        return 0d;
+
+      var max = 0d;
+      var forward = grid.GetMaxThrustInDirection(Base6Directions.Direction.Forward);
+      var backward = grid.GetMaxThrustInDirection(Base6Directions.Direction.Backward);
+      var left = grid.GetMaxThrustInDirection(Base6Directions.Direction.Left);
+      var right = grid.GetMaxThrustInDirection(Base6Directions.Direction.Right);
+      var up = grid.GetMaxThrustInDirection(Base6Directions.Direction.Up);
+      var down = grid.GetMaxThrustInDirection(Base6Directions.Direction.Down);
+
+      max = Math.Max(max, forward / mass);
+      max = Math.Max(max, backward / mass);
+      max = Math.Max(max, left / mass);
+      max = Math.Max(max, right / mass);
+      max = Math.Max(max, up / mass);
+      max = Math.Max(max, down / mass);
 
       return max;
     }
