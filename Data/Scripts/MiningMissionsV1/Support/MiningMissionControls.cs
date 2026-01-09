@@ -20,8 +20,18 @@ namespace MiningMissionsV1.Support
     private static readonly Dictionary<long, long> MinerSelections = new Dictionary<long, long>();
     private static readonly List<PilotProfile> Pilots = new List<PilotProfile>
     {
-      new PilotProfile(0, "Doug", skill: 1, reliability: 3, yield: 1, speed: 3),
-      new PilotProfile(1, "Dyllan", skill: 1, reliability: 1, yield: 2, speed: 5)
+      new PilotProfile(0, "Doug",     skill: 1, reliability: 3, yield: 1, speed: 3),
+      new PilotProfile(1, "Dylan",    skill: 1, reliability: 1, yield: 2, speed: 5),
+      new PilotProfile(0, "Marcus",   skill: 1, reliability: 5, yield: 3, speed: 2),
+      new PilotProfile(1, "Max",      skill: 2, reliability: 3, yield: 2, speed: 2),
+      new PilotProfile(2, "Rasmus",   skill: 2, reliability: 2, yield: 3, speed: 3),
+      new PilotProfile(3, "Carl",     skill: 3, reliability: 5, yield: 4, speed: 2),
+      new PilotProfile(4, "Nelson",   skill: 3, reliability: 3, yield: 3, speed: 4),
+      new PilotProfile(5, "Antilles", skill: 4, reliability: 3, yield: 3, speed: 3),
+      new PilotProfile(6, "Billy",    skill: 4, reliability: 5, yield: 4, speed: 1),
+      new PilotProfile(7, "Gaius",    skill: 5, reliability: 4, yield: 4, speed: 3),
+      new PilotProfile(8, "Jackal",   skill: 5, reliability: 2, yield: 3, speed: 5),
+      new PilotProfile(9, "Singer",   skill: 5, reliability: 5, yield: 5, speed: 1),
     };
 
     internal static void EnsureControls()
