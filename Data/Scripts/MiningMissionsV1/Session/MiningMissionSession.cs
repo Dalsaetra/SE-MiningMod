@@ -33,7 +33,7 @@ namespace MiningMissionsV1.Session
     private const string JumpOutSound = "ShipJumpDriveJumpOut";
     private const string JumpInSound = "ShipJumpDriveJumpIn";
 
-    private const double KSpeedSkill = 0.15;
+    private const double KSpeedSkill = 0.2;
     private const double ARef = 5.0;
     private const double AMin = 0.1;
     private const double DrillExponentDefault = 0.75;
@@ -49,8 +49,8 @@ namespace MiningMissionsV1.Session
     private const int ReliabilityTicks = 5;
 
     private const double PriceSkillRateMultiplier = 0.10;
-    private static readonly long[] BasePriceBySkill = { 0, 1000, 2000, 3000, 4500, 6000 };
-    private static readonly double[] RatePerMinuteByRarity = { 0.0, 100.0, 200.0, 350.0, 500.0, 750.0 };
+    private static readonly long[] BasePriceBySkill = { 0, 10000, 25000, 50000, 80000, 120000 };
+    private static readonly double[] RatePerMinuteByRarity = { 0.0, 500.0, 750.0, 1000.0, 2000.0, 2500.0 };
     private static readonly Dictionary<string, int> OreRarity = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
     {
       ["Stone"] = 1,
@@ -79,15 +79,15 @@ namespace MiningMissionsV1.Session
       },
       ["Iron"] = new OreSpeedParams
       {
-        BaseTravel_s = 240.0,
-        BaseMine_s = 480.0,
+        BaseTravel_s = 320.0,
+        BaseMine_s = 540.0,
         TravelDifficulty = 0.2,
         DrillExponent = 0.80,
         Sigma0 = 0.12
       },
       ["Nickel"] = new OreSpeedParams
       {
-        BaseTravel_s = 260.0,
+        BaseTravel_s = 360.0,
         BaseMine_s = 520.0,
         TravelDifficulty = 0.25,
         DrillExponent = 0.80,
@@ -95,7 +95,7 @@ namespace MiningMissionsV1.Session
       },
       ["Silicon"] = new OreSpeedParams
       {
-        BaseTravel_s = 270.0,
+        BaseTravel_s = 360.0,
         BaseMine_s = 540.0,
         TravelDifficulty = 0.3,
         DrillExponent = 0.78,
@@ -103,7 +103,7 @@ namespace MiningMissionsV1.Session
       },
       ["Ice"] = new OreSpeedParams
       {
-        BaseTravel_s = 220.0,
+        BaseTravel_s = 240.0,
         BaseMine_s = 420.0,
         TravelDifficulty = 0.2,
         DrillExponent = 0.82,
