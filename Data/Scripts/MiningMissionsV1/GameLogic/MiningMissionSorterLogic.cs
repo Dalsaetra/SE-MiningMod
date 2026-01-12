@@ -127,7 +127,8 @@ namespace MiningMissionsV1.GameLogic
       var speedSkill = pilot != null ? pilot.Speed : 0;
       var oreName = MiningMissionControls.GetSelectedOreName(_block);
       var missionScale = MiningMissionControls.GetMissionLengthScale(_block);
-      var expectedSeconds = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, maxAcceleration, maxDirectionalCount) * missionScale;
+      var isLargeGrid = grid.GridSizeEnum == VRage.Game.MyCubeSize.Large;
+      var expectedSeconds = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, maxAcceleration, maxDirectionalCount, isLargeGrid) * missionScale;
       var freeOreCapacityKg = MiningMissionSession.EstimateFreeOreMassKg(grid, oreName);
       var accelChanged = Math.Abs(maxAcceleration - _lastMaxAcceleration) > 0.01d;
       var drillChanged = maxDirectionalCount != _lastDrillCount;
@@ -161,7 +162,8 @@ namespace MiningMissionsV1.GameLogic
       var speedSkill = pilot != null ? pilot.Speed : 0;
       var oreName = MiningMissionControls.GetSelectedOreName(block);
       var missionScale = MiningMissionControls.GetMissionLengthScale(block);
-      var expected = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, accel, count) * missionScale;
+      var isLargeGrid = block?.CubeGrid != null && block.CubeGrid.GridSizeEnum == VRage.Game.MyCubeSize.Large;
+      var expected = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, accel, count, isLargeGrid) * missionScale;
       if (expected < 0d)
         expected = 0d;
       _lastExpectedSeconds = expected;
@@ -171,13 +173,13 @@ namespace MiningMissionsV1.GameLogic
       {
         sb.AppendLine($"Pilot: {pilot.Name}");
         sb.AppendLine($"Skill {pilot.Skill} | Reliability {pilot.Reliability} | Yield {pilot.Yield} | Speed {pilot.Speed}");
-        var expectedYield = MiningMissionSession.EstimateYieldMeanUnits(pilot.Yield, pilot.Skill, count, oreName, missionScale);
+        var expectedYield = MiningMissionSession.EstimateYieldMeanUnits(pilot.Yield, pilot.Skill, count, oreName, missionScale, isLargeGrid);
         sb.AppendLine($"Expected yield: {expectedYield:0} kg {oreName}");
         var freeCapacityKg = _lastFreeOreCapacityKg < 0d ? MiningMissionSession.EstimateFreeOreMassKg(block?.CubeGrid, oreName) : _lastFreeOreCapacityKg;
         sb.AppendLine($"Available {oreName} capacity: {freeCapacityKg:0} kg");
         var price = MiningMissionSession.EstimateMissionCost(pilot.Skill, oreName, expected);
         sb.AppendLine($"Mission cost: {price} credits");
-        var successProb = MiningMissionSession.EstimateMissionSuccessProbability(pilot.Reliability, expected);
+        var successProb = MiningMissionSession.EstimateMissionSuccessProbability(pilot.Reliability, expected, isLargeGrid);
         sb.AppendLine($"Full mission completion chance: {successProb:P1}");
       }
     }

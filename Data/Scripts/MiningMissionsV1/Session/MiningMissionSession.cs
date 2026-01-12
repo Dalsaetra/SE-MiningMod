@@ -50,6 +50,10 @@ namespace MiningMissionsV1.Session
     private const double YieldCapacityMax = 50000.0;
     private const double YieldCapacityCurve = 1.3;
     private const double YieldCapacitySkillBonus = 5.0;
+    private const double LargeGridYieldMultiplier = 1.5;
+    private const double LargeGridYieldCapacityMultiplier = 2.0;
+    private const double LargeGridMiningSpeedMultiplier = 1.5;
+    private const double LargeGridReliabilityTimeMultiplier = 1.5;
     private const int ReliabilityTicks = 5;
 
     private const double PriceSkillRateMultiplier = 0.5;
@@ -327,7 +331,8 @@ namespace MiningMissionsV1.Session
       var maxAcceleration = GetMaxAcceleration(grid);
       var oreSubtype = MiningMissionControls.GetSelectedOreName(block);
       var missionScale = MiningMissionControls.GetMissionLengthScale(block);
-      var yieldMean = EstimateYieldMeanUnits(yieldSkill, miningSkill, drillCount, oreSubtype, missionScale);
+      var isLargeGrid = grid.GridSizeEnum == MyCubeSize.Large;
+      var yieldMean = EstimateYieldMeanUnits(yieldSkill, miningSkill, drillCount, oreSubtype, missionScale, isLargeGrid);
       var oreAmount = (MyFixedPoint)Math.Max(1d, yieldMean);
       if (!HasCargoCapacity(grid, oreAmount, oreSubtype))
       {
@@ -340,10 +345,10 @@ namespace MiningMissionsV1.Session
         yieldUnits = 1d;
 
       var reliabilitySkill = pilot != null ? pilot.Reliability : 0;
-      var fullMissionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount) * missionScale;
+      var fullMissionDuration = ComputeMissionDurationSeconds(speedSkill, oreSubtype, maxAcceleration, drillCount, isLargeGrid) * missionScale;
       double returnProgress;
       bool missionFailed;
-      var yieldFactor = ResolveMissionYieldFactor(reliabilitySkill, fullMissionDuration, ReliabilityTicks, Rng, out returnProgress, out missionFailed);
+      var yieldFactor = ResolveMissionYieldFactor(reliabilitySkill, fullMissionDuration, ReliabilityTicks, Rng, out returnProgress, out missionFailed, isLargeGrid);
       yieldUnits *= yieldFactor;
       var missionDuration = fullMissionDuration * returnProgress;
       var chargeIdentityId = GetChargeIdentityId(block, grid);
@@ -522,10 +527,10 @@ namespace MiningMissionsV1.Session
       return maxThrust / mass;
     }
 
-    private double ComputeMissionDurationSeconds(int speedSkill0to5, string oreSubtype, double aMax, int drillCount)
+    private double ComputeMissionDurationSeconds(int speedSkill0to5, string oreSubtype, double aMax, int drillCount, bool isLargeGrid)
     {
       var p = GetOreSpeedParams(oreSubtype);
-      var mean = MissionTimeMean(speedSkill0to5, aMax, drillCount, p);
+      var mean = MissionTimeMean(speedSkill0to5, aMax, drillCount, p, isLargeGrid);
       var std = MissionTimeStd(mean, speedSkill0to5, p);
       var value = mean;
 
@@ -545,8 +550,13 @@ namespace MiningMissionsV1.Session
 
     public static double EstimateMissionTimeMeanSeconds(int speedSkill0to5, string oreSubtype, double aMax, int drillCount)
     {
+      return EstimateMissionTimeMeanSeconds(speedSkill0to5, oreSubtype, aMax, drillCount, false);
+    }
+
+    public static double EstimateMissionTimeMeanSeconds(int speedSkill0to5, string oreSubtype, double aMax, int drillCount, bool isLargeGrid)
+    {
       var p = GetOreSpeedParams(oreSubtype);
-      return MissionTimeMean(speedSkill0to5, aMax, drillCount, p);
+      return MissionTimeMean(speedSkill0to5, aMax, drillCount, p, isLargeGrid);
     }
 
     public static double EstimateYieldMeanUnits(int yieldSkill0to5, int overallMiningSkill0to5, int drillCount, string oreSubtype)
@@ -556,13 +566,20 @@ namespace MiningMissionsV1.Session
 
     public static double EstimateYieldMeanUnits(int yieldSkill0to5, int overallMiningSkill0to5, int drillCount, string oreSubtype, double missionScale)
     {
+      return EstimateYieldMeanUnits(yieldSkill0to5, overallMiningSkill0to5, drillCount, oreSubtype, missionScale, false);
+    }
+
+    public static double EstimateYieldMeanUnits(int yieldSkill0to5, int overallMiningSkill0to5, int drillCount, string oreSubtype, double missionScale, bool isLargeGrid)
+    {
       var p = GetOreYieldParams(oreSubtype);
       var ratio = GetMinedOreRatio(oreSubtype);
       var baseYield = ComputeYieldMean(yieldSkill0to5, overallMiningSkill0to5, drillCount, ratio, p);
+      if (isLargeGrid)
+        baseYield *= LargeGridYieldMultiplier;
       if (missionScale <= 0d)
         missionScale = 0d;
 
-      return ApplyYieldCapacity(baseYield * missionScale, overallMiningSkill0to5, yieldSkill0to5);
+      return ApplyYieldCapacity(baseYield * missionScale, overallMiningSkill0to5, yieldSkill0to5, isLargeGrid);
     }
 
     public static double EstimateFreeOreMassKg(IMyCubeGrid grid, string oreSubtype)
@@ -631,7 +648,7 @@ namespace MiningMissionsV1.Session
       return p;
     }
 
-    private static double MissionTimeMean(int speedSkill0to5, double aMax, int drillCount, OreSpeedParams p)
+    private static double MissionTimeMean(int speedSkill0to5, double aMax, int drillCount, OreSpeedParams p, bool isLargeGrid)
     {
       var s = ClampInt(speedSkill0to5, 0, 5);
       var d = Math.Max(1, drillCount);
@@ -643,8 +660,11 @@ namespace MiningMissionsV1.Session
 
       var travel = p.BaseTravel_s * (1.0 + p.TravelDifficulty) * fSkill * fAccel;
       var mine = p.BaseMine_s * fSkill * fDrills;
+      if (isLargeGrid && LargeGridMiningSpeedMultiplier > 0d)
+        mine *= LargeGridMiningSpeedMultiplier;
+      var total = travel + mine;
 
-      return travel + mine;
+      return total;
     }
 
     private static double MissionTimeStd(double meanTime, int speedSkill0to5, OreSpeedParams p)
@@ -679,9 +699,9 @@ namespace MiningMissionsV1.Session
       return value;
     }
 
-    private double ResolveMissionYieldFactor(int reliabilitySkill0to5, double missionSeconds, int ticks, Random rng, out double returnProgress, out bool missionFailed)
+    private double ResolveMissionYieldFactor(int reliabilitySkill0to5, double missionSeconds, int ticks, Random rng, out double returnProgress, out bool missionFailed, bool isLargeGrid)
     {
-      var pSuccess = ComputeMissionSuccessProbability(reliabilitySkill0to5, missionSeconds);
+      var pSuccess = ComputeMissionSuccessProbability(reliabilitySkill0to5, missionSeconds, isLargeGrid);
       var pTick = PerTickFailureProbability(pSuccess, ticks);
       var tFail = SampleFailureTick(pTick, ticks, rng);
 
@@ -699,12 +719,12 @@ namespace MiningMissionsV1.Session
       return Math.Pow(yieldProgress, 0.8);
     }
 
-    private static double ComputeMissionSuccessProbability(int reliabilitySkill0to5, double missionSeconds, double pMin = 0.75, double pMax = 0.995, double gamma = 1.7)
+    private static double ComputeMissionSuccessProbability(int reliabilitySkill0to5, double missionSeconds, bool isLargeGrid, double pMin = 0.75, double pMax = 0.995, double gamma = 1.7)
     {
       var r = ClampInt(reliabilitySkill0to5, 0, 5);
       var x = r / 5.0;
       var pBase = pMin + (pMax - pMin) * Math.Pow(x, gamma);
-      var lengthFactor = MissionLengthFactor(missionSeconds, GetLengthRefSeconds(reliabilitySkill0to5));
+      var lengthFactor = MissionLengthFactor(missionSeconds, GetLengthRefSeconds(reliabilitySkill0to5, isLargeGrid));
       return Math.Min(pBase * lengthFactor, 0.999);
     }
 
@@ -717,23 +737,24 @@ namespace MiningMissionsV1.Session
       return Clamp(f, fMin, 1.0);
     }
 
-    private static double GetLengthRefSeconds(int reliabilitySkill0to5)
+    private static double GetLengthRefSeconds(int reliabilitySkill0to5, bool isLargeGrid)
     {
       var r = ClampInt(reliabilitySkill0to5, 0, 5);
+      var multiplier = isLargeGrid ? LargeGridReliabilityTimeMultiplier : 1.0;
       switch (r)
       {
         case 0:
-          return 300.0;
+          return 300.0 * multiplier;
         case 1:
-          return 300.0;
+          return 300.0 * multiplier;
         case 2:
-          return 600.0;
+          return 600.0 * multiplier;
         case 3:
-          return 1200.0;
+          return 1200.0 * multiplier;
         case 4:
-          return 2000.0;
+          return 2000.0 * multiplier;
         default:
-          return 2600.0;
+          return 2600.0 * multiplier;
       }
     }
 
@@ -797,7 +818,12 @@ namespace MiningMissionsV1.Session
 
     public static double EstimateMissionSuccessProbability(int reliabilitySkill0to5, double missionSeconds)
     {
-      return ComputeMissionSuccessProbability(reliabilitySkill0to5, missionSeconds);
+      return EstimateMissionSuccessProbability(reliabilitySkill0to5, missionSeconds, false);
+    }
+
+    public static double EstimateMissionSuccessProbability(int reliabilitySkill0to5, double missionSeconds, bool isLargeGrid)
+    {
+      return ComputeMissionSuccessProbability(reliabilitySkill0to5, missionSeconds, isLargeGrid);
     }
 
     private static int GetOreRarityLevel(string oreSubtype)
@@ -925,13 +951,15 @@ namespace MiningMissionsV1.Session
       return mean * p.CV0 * consistency;
     }
 
-    private static double ApplyYieldCapacity(double baseYield, int overallSkill0to5, int yieldSkill0to5)
+    private static double ApplyYieldCapacity(double baseYield, int overallSkill0to5, int yieldSkill0to5, bool isLargeGrid)
     {
       var overallSkill = ClampInt(overallSkill0to5, 1, 5);
       var yieldSkill = ClampInt(yieldSkill0to5, 0, 5);
       var s = (overallSkill - 1) / 4.0;
       var cOverall = YieldCapacityMin * Math.Pow(YieldCapacityMax / YieldCapacityMin, s);
       var c = cOverall * (1.0 + YieldCapacitySkillBonus * (yieldSkill / 5.0));
+      if (isLargeGrid)
+        c *= LargeGridYieldCapacityMultiplier;
       return baseYield / (1.0 + Math.Pow(baseYield / c, YieldCapacityCurve));
     }
 
