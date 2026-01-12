@@ -26,6 +26,7 @@ namespace MiningMissionsV1.GameLogic
     private long _lastPilotKey = long.MinValue;
     private long _lastOreKey = long.MinValue;
     private double _lastExpectedSeconds = -1d;
+    private double _lastFreeOreCapacityKg = -1d;
     private bool _customInfoHooked;
 
     public override void Init(MyObjectBuilder_EntityBase objectBuilder)
@@ -127,12 +128,14 @@ namespace MiningMissionsV1.GameLogic
       var oreName = MiningMissionControls.GetSelectedOreName(_block);
       var missionScale = MiningMissionControls.GetMissionLengthScale(_block);
       var expectedSeconds = MiningMissionSession.EstimateMissionTimeMeanSeconds(speedSkill, oreName, maxAcceleration, maxDirectionalCount) * missionScale;
+      var freeOreCapacityKg = MiningMissionSession.EstimateFreeOreMassKg(grid, oreName);
       var accelChanged = Math.Abs(maxAcceleration - _lastMaxAcceleration) > 0.01d;
       var drillChanged = maxDirectionalCount != _lastDrillCount;
       var pilotChanged = pilotKey != _lastPilotKey;
       var oreChanged = oreKey != _lastOreKey;
       var expectedChanged = Math.Abs(expectedSeconds - _lastExpectedSeconds) > 1.0d;
-      if (!drillChanged && !accelChanged && !pilotChanged && !oreChanged && !expectedChanged)
+      var capacityChanged = Math.Abs(freeOreCapacityKg - _lastFreeOreCapacityKg) > 1.0d;
+      if (!drillChanged && !accelChanged && !pilotChanged && !oreChanged && !expectedChanged && !capacityChanged)
         return;
 
       _lastDrillCount = maxDirectionalCount;
@@ -140,6 +143,7 @@ namespace MiningMissionsV1.GameLogic
       _lastPilotKey = pilotKey;
       _lastOreKey = oreKey;
       _lastExpectedSeconds = expectedSeconds;
+      _lastFreeOreCapacityKg = freeOreCapacityKg;
       _block.RefreshCustomInfo();
     }
 
@@ -169,6 +173,8 @@ namespace MiningMissionsV1.GameLogic
         sb.AppendLine($"Skill {pilot.Skill} | Reliability {pilot.Reliability} | Yield {pilot.Yield} | Speed {pilot.Speed}");
         var expectedYield = MiningMissionSession.EstimateYieldMeanUnits(pilot.Yield, pilot.Skill, count, oreName, missionScale);
         sb.AppendLine($"Expected yield: {expectedYield:0} kg {oreName}");
+        var freeCapacityKg = _lastFreeOreCapacityKg < 0d ? MiningMissionSession.EstimateFreeOreMassKg(block?.CubeGrid, oreName) : _lastFreeOreCapacityKg;
+        sb.AppendLine($"Available {oreName} capacity: {freeCapacityKg:0} kg");
         var price = MiningMissionSession.EstimateMissionCost(pilot.Skill, oreName, expected);
         sb.AppendLine($"Mission cost: {price} credits");
         var successProb = MiningMissionSession.EstimateMissionSuccessProbability(pilot.Reliability, expected);

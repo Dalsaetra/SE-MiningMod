@@ -318,6 +318,11 @@ namespace MiningMissionsV1.Session
       var speedSkill = pilot != null ? pilot.Speed : 0;
       var yieldSkill = pilot != null ? pilot.Yield : 0;
       var miningSkill = pilot != null ? pilot.Skill : 0;
+      if (grid.GridSizeEnum == MyCubeSize.Large && miningSkill < 3)
+      {
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", "Large grid missions require overall skill 3 or higher.");
+        return;
+      }
       var drillCount = GetMaxDirectionalDrillCount(terminalSystem, grid);
       var maxAcceleration = GetMaxAcceleration(grid);
       var oreSubtype = MiningMissionControls.GetSelectedOreName(block);
@@ -558,6 +563,45 @@ namespace MiningMissionsV1.Session
         missionScale = 0d;
 
       return ApplyYieldCapacity(baseYield * missionScale, overallMiningSkill0to5, yieldSkill0to5);
+    }
+
+    public static double EstimateFreeOreMassKg(IMyCubeGrid grid, string oreSubtype)
+    {
+      if (grid == null)
+        return 0d;
+
+      var def = GetOreDefinitionStatic(oreSubtype);
+      if (def == null)
+        return 0d;
+
+      var terminalSystem = MyAPIGateway.TerminalActionsHelper.GetTerminalSystemForGrid(grid);
+      if (terminalSystem == null)
+        return 0d;
+
+      var cargo = new List<IMyCargoContainer>();
+      terminalSystem.GetBlocksOfType(cargo, c => c.CubeGrid == grid);
+
+      var unitVolume = (double)def.Volume;
+      if (unitVolume <= 0d)
+        return 0d;
+
+      var freeVolume = 0d;
+      for (int i = 0; i < cargo.Count; i++)
+      {
+        var inv = cargo[i].GetInventory(0);
+        if (inv == null)
+          continue;
+
+        var available = (double)(inv.MaxVolume - inv.CurrentVolume);
+        if (available > 0d)
+          freeVolume += available;
+      }
+
+      if (freeVolume <= 0d)
+        return 0d;
+
+      var units = freeVolume / unitVolume;
+      return Math.Max(0d, units * (double)def.Mass);
     }
 
     private static OreSpeedParams GetOreSpeedParams(string oreSubtype)
@@ -1154,6 +1198,13 @@ namespace MiningMissionsV1.Session
     }
 
     private MyPhysicalItemDefinition GetOreDefinition(string oreSubtype)
+    {
+      var oreName = string.IsNullOrEmpty(oreSubtype) ? DefaultOreSubtype : oreSubtype;
+      var oreId = new MyDefinitionId(typeof(MyObjectBuilder_Ore), oreName);
+      return MyDefinitionManager.Static.GetPhysicalItemDefinition(oreId);
+    }
+
+    private static MyPhysicalItemDefinition GetOreDefinitionStatic(string oreSubtype)
     {
       var oreName = string.IsNullOrEmpty(oreSubtype) ? DefaultOreSubtype : oreSubtype;
       var oreId = new MyDefinitionId(typeof(MyObjectBuilder_Ore), oreName);

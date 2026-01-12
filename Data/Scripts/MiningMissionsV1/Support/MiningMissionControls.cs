@@ -53,6 +53,9 @@ namespace MiningMissionsV1.Support
     private static int _lastUiPilotSkill = 1;
     private static IMyTerminalControlCombobox _oreSelectControl;
     private static IMyTerminalControlSlider _missionLengthControl;
+    private const float MissionLengthMin = 0.01f;
+    private const float MissionLengthMaxSmall = 3.0f;
+    private const float MissionLengthMaxLarge = 8.0f;
 
     internal static void EnsureControls()
     {
@@ -125,7 +128,7 @@ namespace MiningMissionsV1.Support
       _missionLengthControl.SupportsMultipleBlocks = false;
       _missionLengthControl.Enabled = Combine(_missionLengthControl.Enabled, IsMiningMissionSorter);
       _missionLengthControl.Visible = Combine(_missionLengthControl.Visible, IsMiningMissionSorter);
-      _missionLengthControl.SetLimits(0.01f, 5.0f);
+      _missionLengthControl.SetLimits(MissionLengthMin, MissionLengthMaxLarge);
       _missionLengthControl.Writer = (block, sb) =>
       {
         var value = GetMissionLengthScale(block);
@@ -422,14 +425,15 @@ namespace MiningMissionsV1.Support
       if (block == null)
         return 1.0f;
 
+      var max = GetMissionLengthMax(block);
       float value;
       if (!MissionLengthScales.TryGetValue(block.EntityId, out value))
-        return 1.0f;
+        return Math.Min(1.0f, max);
 
-      if (value < 0.01f)
-        return 0.01f;
-      if (value > 5.0f)
-        return 5.0f;
+      if (value < MissionLengthMin)
+        return MissionLengthMin;
+      if (value > max)
+        return max;
 
       return value;
     }
@@ -459,10 +463,11 @@ namespace MiningMissionsV1.Support
       if (block == null)
         return;
 
-      if (value < 0.01f)
-        value = 0.01f;
-      else if (value > 5.0f)
-        value = 5.0f;
+      var max = GetMissionLengthMax(block);
+      if (value < MissionLengthMin)
+        value = MissionLengthMin;
+      else if (value > max)
+        value = max;
 
       MissionLengthScales[block.EntityId] = value;
       MyAPIGateway.Utilities.InvokeOnGameThread(() =>
@@ -484,6 +489,15 @@ namespace MiningMissionsV1.Support
         Name = name;
         RequiredSkill = requiredSkill;
       }
+    }
+
+    private static float GetMissionLengthMax(IMyTerminalBlock block)
+    {
+      var grid = block?.CubeGrid;
+      if (grid != null && grid.GridSizeEnum == VRage.Game.MyCubeSize.Large)
+        return MissionLengthMaxLarge;
+
+      return MissionLengthMaxSmall;
     }
 
   }
