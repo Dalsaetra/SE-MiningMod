@@ -54,6 +54,7 @@ namespace MiningMissionsV1.Session
     private const double LargeGridYieldCapacityMultiplier = 2.0;
     private const double LargeGridMiningSpeedMultiplier = 1.5;
     private const double LargeGridReliabilityTimeMultiplier = 1.5;
+    private const int PrototechDrillWeight = 5;
     private const int ReliabilityTicks = 5;
 
     private const double PriceSkillRateMultiplier = 0.5;
@@ -478,34 +479,50 @@ namespace MiningMissionsV1.Session
 
       var counts = new int[6];
       for (int i = 0; i < _drills.Count; i++)
-        AddDirectionalCount(counts, _drills[i].Orientation.Forward);
+        AddDirectionalCount(counts, _drills[i].Orientation.Forward, GetDrillWeight(_drills[i]));
 
       return GetMaxDirectionalCount(counts);
     }
 
-    private void AddDirectionalCount(int[] counts, Base6Directions.Direction direction)
+    private void AddDirectionalCount(int[] counts, Base6Directions.Direction direction, int weight)
     {
+      if (weight < 1)
+        weight = 1;
+
       switch (direction)
       {
         case Base6Directions.Direction.Forward:
-          counts[0]++;
+          counts[0] += weight;
           break;
         case Base6Directions.Direction.Backward:
-          counts[1]++;
+          counts[1] += weight;
           break;
         case Base6Directions.Direction.Left:
-          counts[2]++;
+          counts[2] += weight;
           break;
         case Base6Directions.Direction.Right:
-          counts[3]++;
+          counts[3] += weight;
           break;
         case Base6Directions.Direction.Up:
-          counts[4]++;
+          counts[4] += weight;
           break;
         case Base6Directions.Direction.Down:
-          counts[5]++;
+          counts[5] += weight;
           break;
       }
+    }
+
+    private int GetDrillWeight(IMyShipDrill drill)
+    {
+      if (drill == null)
+        return 1;
+
+      var defString = drill.BlockDefinition.ToString();
+      if (!string.IsNullOrEmpty(defString)
+        && defString.IndexOf("PrototechDrill", StringComparison.OrdinalIgnoreCase) >= 0)
+        return PrototechDrillWeight;
+
+      return 1;
     }
 
     private int GetMaxDirectionalCount(int[] counts)

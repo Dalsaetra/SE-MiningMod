@@ -17,6 +17,7 @@ namespace MiningMissionsV1.GameLogic
 {
   public abstract class MiningMissionSorterLogicBase : MyGameLogicComponent
   {
+    private const int PrototechDrillWeight = 5;
     private readonly List<Sandbox.ModAPI.IMyShipDrill> _terminalDrills = new List<Sandbox.ModAPI.IMyShipDrill>();
     private readonly List<VRage.Game.ModAPI.IMySlimBlock> _slimBlocks = new List<VRage.Game.ModAPI.IMySlimBlock>();
     private readonly HashSet<VRage.ModAPI.IMyEntity> _entities = new HashSet<VRage.ModAPI.IMyEntity>();
@@ -95,7 +96,7 @@ namespace MiningMissionsV1.GameLogic
         if (drill != null)
         {
           slimDrillCount++;
-          AddDirectionalCount(slimDirCounts, drill.Orientation.Forward);
+          AddDirectionalCount(slimDirCounts, drill.Orientation.Forward, GetDrillWeight(drill));
         }
       }
       slimMaxDirectional = GetMaxDirectionalCount(slimDirCounts);
@@ -108,7 +109,7 @@ namespace MiningMissionsV1.GameLogic
         if (drill != null && drill.CubeGrid == grid)
         {
           entityDrillCount++;
-          AddDirectionalCount(entityDirCounts, drill.Orientation.Forward);
+          AddDirectionalCount(entityDirCounts, drill.Orientation.Forward, GetDrillWeight(drill));
         }
       }
       entityMaxDirectional = GetMaxDirectionalCount(entityDirCounts);
@@ -200,7 +201,7 @@ namespace MiningMissionsV1.GameLogic
     {
       var counts = new int[6];
       for (int i = 0; i < drills.Count; i++)
-        AddDirectionalCount(counts, drills[i].Orientation.Forward);
+        AddDirectionalCount(counts, drills[i].Orientation.Forward, GetDrillWeight(drills[i]));
 
       var max = 0;
       for (int i = 0; i < counts.Length; i++)
@@ -212,29 +213,45 @@ namespace MiningMissionsV1.GameLogic
       return max;
     }
 
-    private void AddDirectionalCount(int[] counts, Base6Directions.Direction direction)
+    private void AddDirectionalCount(int[] counts, Base6Directions.Direction direction, int weight)
     {
+      if (weight < 1)
+        weight = 1;
+
       switch (direction)
       {
         case Base6Directions.Direction.Forward:
-          counts[0]++;
+          counts[0] += weight;
           break;
         case Base6Directions.Direction.Backward:
-          counts[1]++;
+          counts[1] += weight;
           break;
         case Base6Directions.Direction.Left:
-          counts[2]++;
+          counts[2] += weight;
           break;
         case Base6Directions.Direction.Right:
-          counts[3]++;
+          counts[3] += weight;
           break;
         case Base6Directions.Direction.Up:
-          counts[4]++;
+          counts[4] += weight;
           break;
         case Base6Directions.Direction.Down:
-          counts[5]++;
+          counts[5] += weight;
           break;
       }
+    }
+
+    private int GetDrillWeight(Sandbox.ModAPI.IMyShipDrill drill)
+    {
+      if (drill == null)
+        return 1;
+
+      var defString = drill.BlockDefinition.ToString();
+      if (!string.IsNullOrEmpty(defString)
+        && defString.IndexOf("PrototechDrill", StringComparison.OrdinalIgnoreCase) >= 0)
+        return PrototechDrillWeight;
+
+      return 1;
     }
 
     private int GetMaxDirectionalCount(int[] counts)
