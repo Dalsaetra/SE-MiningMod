@@ -33,7 +33,7 @@ namespace MiningMissionsV1.Session
     private const string JumpOutSound = "ShipJumpDriveJumpOut";
     private const string JumpInSound = "ShipJumpDriveJumpIn";
 
-    private const double KSpeedSkill = 0.2;
+    private static readonly double[] SpeedSkillFactor = { 1.0, 1.0, 0.85, 0.7, 0.5, 0.3 };
     private const double ARef = 5.0;
     private const double AMin = 0.1;
     private const double DrillExponentDefault = 0.75;
@@ -46,11 +46,15 @@ namespace MiningMissionsV1.Session
     private const double DrillBeta = 0.45;
     private const double RYieldSkill = 0.10;
     private const double MinYieldVarianceFactor = 0.5;
+    private const double YieldCapacityMin = 10000.0;
+    private const double YieldCapacityMax = 50000.0;
+    private const double YieldCapacityCurve = 1.3;
+    private const double YieldCapacitySkillBonus = 5.0;
     private const int ReliabilityTicks = 5;
 
-    private const double PriceSkillRateMultiplier = 0.10;
-    private static readonly long[] BasePriceBySkill = { 0, 10000, 25000, 50000, 80000, 120000 };
-    private static readonly double[] RatePerMinuteByRarity = { 0.0, 500.0, 750.0, 1000.0, 2000.0, 2500.0 };
+    private const double PriceSkillRateMultiplier = 0.5;
+    private static readonly long[] BasePriceBySkill = { 0, 10000, 20000, 40000, 75000, 100000 };
+    private static readonly double[] RatePerMinuteByRarity = { 0.0, 500.0, 750.0, 1000.0, 1800.0, 2000.0 };
     private static readonly Dictionary<string, int> OreRarity = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
     {
       ["Stone"] = 1,
@@ -318,7 +322,7 @@ namespace MiningMissionsV1.Session
       var maxAcceleration = GetMaxAcceleration(grid);
       var oreSubtype = MiningMissionControls.GetSelectedOreName(block);
       var missionScale = MiningMissionControls.GetMissionLengthScale(block);
-      var yieldMean = EstimateYieldMeanUnits(yieldSkill, miningSkill, drillCount, oreSubtype) * missionScale;
+      var yieldMean = EstimateYieldMeanUnits(yieldSkill, miningSkill, drillCount, oreSubtype, missionScale);
       var oreAmount = (MyFixedPoint)Math.Max(1d, yieldMean);
       if (!HasCargoCapacity(grid, oreAmount, oreSubtype))
       {
@@ -542,9 +546,18 @@ namespace MiningMissionsV1.Session
 
     public static double EstimateYieldMeanUnits(int yieldSkill0to5, int overallMiningSkill0to5, int drillCount, string oreSubtype)
     {
+      return EstimateYieldMeanUnits(yieldSkill0to5, overallMiningSkill0to5, drillCount, oreSubtype, 1.0);
+    }
+
+    public static double EstimateYieldMeanUnits(int yieldSkill0to5, int overallMiningSkill0to5, int drillCount, string oreSubtype, double missionScale)
+    {
       var p = GetOreYieldParams(oreSubtype);
       var ratio = GetMinedOreRatio(oreSubtype);
-      return ComputeYieldMean(yieldSkill0to5, overallMiningSkill0to5, drillCount, ratio, p);
+      var baseYield = ComputeYieldMean(yieldSkill0to5, overallMiningSkill0to5, drillCount, ratio, p);
+      if (missionScale <= 0d)
+        missionScale = 0d;
+
+      return ApplyYieldCapacity(baseYield * missionScale, overallMiningSkill0to5, yieldSkill0to5);
     }
 
     private static OreSpeedParams GetOreSpeedParams(string oreSubtype)
@@ -580,7 +593,7 @@ namespace MiningMissionsV1.Session
       var d = Math.Max(1, drillCount);
       var accel = Math.Max(AMin, aMax);
 
-      var fSkill = 1.0 / (1.0 + KSpeedSkill * s);
+      var fSkill = SpeedSkillFactor[Math.Min(s, SpeedSkillFactor.Length - 1)];
       var fAccel = 1.0 / Math.Sqrt(accel / ARef);
       var fDrills = 1.0 / Math.Pow(d, p.DrillExponent);
 
@@ -668,15 +681,15 @@ namespace MiningMissionsV1.Session
         case 0:
           return 300.0;
         case 1:
-          return 600.0;
+          return 300.0;
         case 2:
-          return 1200.0;
+          return 600.0;
         case 3:
-          return 1800.0;
+          return 1200.0;
         case 4:
-          return 2400.0;
+          return 2000.0;
         default:
-          return 3000.0;
+          return 2600.0;
       }
     }
 
@@ -866,6 +879,16 @@ namespace MiningMissionsV1.Session
       var y = ClampInt(yieldSkill0to5, 0, 5);
       var consistency = Math.Max(MinYieldVarianceFactor, 1.0 - RYieldSkill * y);
       return mean * p.CV0 * consistency;
+    }
+
+    private static double ApplyYieldCapacity(double baseYield, int overallSkill0to5, int yieldSkill0to5)
+    {
+      var overallSkill = ClampInt(overallSkill0to5, 1, 5);
+      var yieldSkill = ClampInt(yieldSkill0to5, 0, 5);
+      var s = (overallSkill - 1) / 4.0;
+      var cOverall = YieldCapacityMin * Math.Pow(YieldCapacityMax / YieldCapacityMin, s);
+      var c = cOverall * (1.0 + YieldCapacitySkillBonus * (yieldSkill / 5.0));
+      return baseYield / (1.0 + Math.Pow(baseYield / c, YieldCapacityCurve));
     }
 
     private MissionEntry CreateEntry(IMyCubeGrid grid, bool countdown, string oreSubtype, double missionDurationSeconds)
