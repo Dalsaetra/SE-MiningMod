@@ -407,7 +407,7 @@ namespace MiningMissionsV1.Session
     private bool HasMinimumDrills(IMyGridTerminalSystem terminalSystem, IMyCubeGrid grid, int minCount)
     {
       _drills.Clear();
-      terminalSystem.GetBlocksOfType(_drills, d => d.CubeGrid == grid);
+      terminalSystem.GetBlocksOfType(_drills, d => d.CubeGrid == grid && d.IsFunctional);
       return _drills.Count >= minCount;
     }
 
@@ -436,7 +436,7 @@ namespace MiningMissionsV1.Session
     {
       _thrusters.Clear();
       _thrustDirs.Clear();
-      terminalSystem.GetBlocksOfType(_thrusters, t => t.CubeGrid == grid);
+      terminalSystem.GetBlocksOfType(_thrusters, t => t.CubeGrid == grid && t.IsFunctional);
 
       for (int i = 0; i < _thrusters.Count; i++)
       {
@@ -473,7 +473,7 @@ namespace MiningMissionsV1.Session
     private int GetMaxDirectionalDrillCount(IMyGridTerminalSystem terminalSystem, IMyCubeGrid grid)
     {
       _drills.Clear();
-      terminalSystem.GetBlocksOfType(_drills, d => d.CubeGrid == grid);
+      terminalSystem.GetBlocksOfType(_drills, d => d.CubeGrid == grid && d.IsFunctional);
       if (_drills.Count == 0)
         return 0;
 

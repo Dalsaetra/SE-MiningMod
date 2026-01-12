@@ -2,6 +2,7 @@ using MiningMissionsV1.Support;
 using MiningMissionsV1.Session;
 
 using Sandbox.Common.ObjectBuilders;
+using Sandbox.Game;
 using Sandbox.ModAPI;
 
 using System;
@@ -20,7 +21,6 @@ namespace MiningMissionsV1.GameLogic
     private const int PrototechDrillWeight = 5;
     private readonly List<Sandbox.ModAPI.IMyShipDrill> _terminalDrills = new List<Sandbox.ModAPI.IMyShipDrill>();
     private readonly List<VRage.Game.ModAPI.IMySlimBlock> _slimBlocks = new List<VRage.Game.ModAPI.IMySlimBlock>();
-    private readonly HashSet<VRage.ModAPI.IMyEntity> _entities = new HashSet<VRage.ModAPI.IMyEntity>();
     private Sandbox.ModAPI.IMyTerminalBlock _block;
     private int _lastDrillCount = -1;
     private double _lastMaxAcceleration = -1d;
@@ -72,54 +72,40 @@ namespace MiningMissionsV1.GameLogic
       var maxDirectionalCount = 0;
       var terminalDrillCount = 0;
       var slimDrillCount = 0;
-      var entityDrillCount = 0;
       var terminalMaxDirectional = 0;
       var slimMaxDirectional = 0;
-      var entityMaxDirectional = 0;
       var slimDirCounts = new int[6];
-      var entityDirCounts = new int[6];
 
-      var terminalSystem = MyAPIGateway.TerminalActionsHelper.GetTerminalSystemForGrid(grid);
-      if (terminalSystem != null)
+      var useSlimScan = IsAnyTerminalOpen();
+      if (useSlimScan)
       {
-        _terminalDrills.Clear();
-        terminalSystem.GetBlocksOfType(_terminalDrills, b => b.CubeGrid == grid);
-        terminalDrillCount = _terminalDrills.Count;
-        terminalMaxDirectional = GetMaxDirectionalDrillCount(_terminalDrills);
-      }
-      _slimBlocks.Clear();
-      grid.GetBlocks(_slimBlocks, b => b != null);
-      for (int i = 0; i < _slimBlocks.Count; i++)
-      {
-        var fat = _slimBlocks[i].FatBlock;
-        var drill = fat as Sandbox.ModAPI.IMyShipDrill;
-        if (drill != null)
+        _slimBlocks.Clear();
+        grid.GetBlocks(_slimBlocks, b => b != null && b.FatBlock != null && b.FatBlock.IsFunctional);
+        for (int i = 0; i < _slimBlocks.Count; i++)
         {
-          slimDrillCount++;
-          AddDirectionalCount(slimDirCounts, drill.Orientation.Forward, GetDrillWeight(drill));
+          var fat = _slimBlocks[i].FatBlock;
+          var drill = fat as Sandbox.ModAPI.IMyShipDrill;
+          if (drill != null && drill.IsFunctional)
+          {
+            slimDrillCount++;
+            AddDirectionalCount(slimDirCounts, drill.Orientation.Forward, GetDrillWeight(drill));
+          }
         }
-      }
-      slimMaxDirectional = GetMaxDirectionalCount(slimDirCounts);
-
-      _entities.Clear();
-      MyAPIGateway.Entities.GetEntities(_entities, e => e is Sandbox.ModAPI.IMyShipDrill);
-      foreach (var entity in _entities)
-      {
-        var drill = entity as Sandbox.ModAPI.IMyShipDrill;
-        if (drill != null && drill.CubeGrid == grid)
-        {
-          entityDrillCount++;
-          AddDirectionalCount(entityDirCounts, drill.Orientation.Forward, GetDrillWeight(drill));
-        }
-      }
-      entityMaxDirectional = GetMaxDirectionalCount(entityDirCounts);
-
-      if (terminalDrillCount >= slimDrillCount && terminalDrillCount >= entityDrillCount)
-        maxDirectionalCount = terminalMaxDirectional;
-      else if (slimDrillCount >= entityDrillCount)
+        slimMaxDirectional = GetMaxDirectionalCount(slimDirCounts);
         maxDirectionalCount = slimMaxDirectional;
+      }
       else
-        maxDirectionalCount = entityMaxDirectional;
+      {
+        var terminalSystem = MyAPIGateway.TerminalActionsHelper.GetTerminalSystemForGrid(grid);
+        if (terminalSystem != null)
+        {
+          _terminalDrills.Clear();
+          terminalSystem.GetBlocksOfType(_terminalDrills, b => b.CubeGrid == grid && b.IsFunctional);
+          terminalDrillCount = _terminalDrills.Count;
+          terminalMaxDirectional = GetMaxDirectionalDrillCount(_terminalDrills);
+          maxDirectionalCount = terminalMaxDirectional;
+        }
+      }
 
       var maxAcceleration = GetMaxAcceleration(grid);
       var pilotKey = MiningMissionControls.GetSelectedPilotKey(_block);
@@ -302,6 +288,11 @@ namespace MiningMissionsV1.GameLogic
       _block.OnMarkForClose -= OnClose;
       _block.OnClose -= OnClose;
       _customInfoHooked = false;
+    }
+
+    private static bool IsAnyTerminalOpen()
+    {
+      return MyVisualScriptLogicProvider.GetOpenedTerminal() != null;
     }
   }
 
