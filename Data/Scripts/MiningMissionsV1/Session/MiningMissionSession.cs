@@ -206,6 +206,7 @@ namespace MiningMissionsV1.Session
     private readonly List<IMyRadioAntenna> _antennas = new List<IMyRadioAntenna>();
     private readonly HashSet<Base6Directions.Direction> _thrustDirs = new HashSet<Base6Directions.Direction>();
     private readonly List<IMyPlayer> _players = new List<IMyPlayer>();
+    private readonly HashSet<long> _activePilotKeys = new HashSet<long>();
     private long _lastSaveFrame;
 
     public override void LoadData()
@@ -223,6 +224,7 @@ namespace MiningMissionsV1.Session
     {
       SaveToStorage();
       _active.Clear();
+      _activePilotKeys.Clear();
       Instance = null;
     }
 
@@ -319,6 +321,12 @@ namespace MiningMissionsV1.Session
       }
 
       var pilot = MiningMissionControls.GetSelectedPilot(block);
+      var pilotKey = MiningMissionControls.GetSelectedPilotKey(block);
+      if (pilot != null && pilotKey >= 0 && _activePilotKeys.Contains(pilotKey))
+      {
+        MyAPIGateway.Utilities.ShowMessage("MiningMissions", "This pilot is already on a mission.");
+        return;
+      }
       var speedSkill = pilot != null ? pilot.Speed : 0;
       var yieldSkill = pilot != null ? pilot.Yield : 0;
       var miningSkill = pilot != null ? pilot.Skill : 0;
@@ -375,6 +383,11 @@ namespace MiningMissionsV1.Session
       entry.MiningSkill = miningSkill;
       entry.ChargeIdentityId = chargeIdentityId;
       entry.FullMissionCost = fullMissionCost;
+      if (pilot != null && pilotKey >= 0)
+      {
+        entry.PilotKey = pilotKey;
+        _activePilotKeys.Add(pilotKey);
+      }
       _active.Add(entry);
       SaveToStorage();
     }
@@ -989,6 +1002,9 @@ namespace MiningMissionsV1.Session
 
     private void CompleteMission(MissionEntry entry)
     {
+      if (entry?.PilotKey >= 0)
+        _activePilotKeys.Remove(entry.PilotKey);
+
       if (entry?.GridBytes == null)
         return;
 
@@ -1299,6 +1315,7 @@ namespace MiningMissionsV1.Session
             return;
 
           _active.Clear();
+          _activePilotKeys.Clear();
           var now = MyAPIGateway.Session.GameplayFrameCounter;
           for (int i = 0; i < data.Active.Count; i++)
           {
@@ -1308,6 +1325,8 @@ namespace MiningMissionsV1.Session
 
             entry.EndFrame = now + (long)(entry.RemainingSeconds * FramesPerSecond);
             _active.Add(entry);
+            if (entry.PilotKey >= 0)
+              _activePilotKeys.Add(entry.PilotKey);
           }
         }
       }
@@ -1362,6 +1381,8 @@ namespace MiningMissionsV1.Session
       public long FullMissionCost;
       [ProtoMember(18)]
       public double EndAtSeconds;
+      [ProtoMember(19)]
+      public long PilotKey = -1;
     }
   }
 }
